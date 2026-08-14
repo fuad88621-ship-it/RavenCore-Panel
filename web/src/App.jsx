@@ -165,13 +165,16 @@ function MobileNav({ user, onLogout, nav }) {
           <Logo size={34} />
           <span className="text-sm font-bold text-white">{panelName}</span>
         </Link>
-        <button
-          onClick={() => setOpen(true)}
-          className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-2 text-zinc-400 transition hover:text-white"
-          aria-label="Open menu"
-        >
-          <Icons.Menu className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <AlertsBell />
+          <button
+            onClick={() => setOpen(true)}
+            className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-2 text-zinc-400 transition hover:text-white"
+            aria-label="Open menu"
+          >
+            <Icons.Menu className="h-5 w-5" />
+          </button>
+        </div>
       </header>
 
       <AnimatePresence>
@@ -377,7 +380,7 @@ function Layout({ children }) {
       <Sidebar user={user} onLogout={logout} nav={nav} />
       <div className="lg:pl-[280px]">
         <MobileNav user={user} onLogout={logout} nav={nav} />
-        <div className="fixed right-4 top-4 z-40 lg:right-6 lg:top-5">
+        <div className="hidden fixed right-4 top-4 z-40 lg:right-6 lg:top-5 lg:block">
           <AlertsBell />
         </div>
         <main className="mx-auto w-full max-w-7xl px-4 pb-16 pt-6 sm:px-6 sm:pt-8 lg:px-8">
