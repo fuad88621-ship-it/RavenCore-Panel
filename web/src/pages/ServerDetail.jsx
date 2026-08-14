@@ -15,10 +15,12 @@ function StatChip({ label, value }) {
 
 function formatUptime(seconds) {
   if (!seconds) return '0s';
+  // Guard against bogus epoch/timestamp values that produce multi-year uptimes.
+  if (seconds > 3153600000) return 'Unknown';
   const d = Math.floor(seconds / 86400);
   const h = Math.floor((seconds % 86400) / 3600);
   const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
+  const s = Math.floor(seconds % 60);
   if (d > 0) return `${d}d ${h}h ${m}m`;
   if (h > 0) return `${h}h ${m}m ${s}s`;
   if (m > 0) return `${m}m ${s}s`;
@@ -31,30 +33,32 @@ function formatMemory(mb) {
 }
 
 function StatCard({ icon, label, value, sub, bar, index }) {
-  const hasBar = typeof bar === 'number' && bar > 0;
-  const pct = hasBar ? Math.min(100, bar) : 0;
+  const hasBar = typeof bar === 'number';
+  const pct = hasBar ? Math.min(100, Math.max(0, bar)) : 0;
   return (
     <motion.div
       initial={{ opacity: 0, x: 16 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.35, delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
     >
-      <Card className="flex h-[88px] items-center gap-3 p-4">
+      <Card className="flex min-h-[88px] items-center gap-3 p-4">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-zinc-300">
           {icon}
         </span>
         <div className="flex min-w-0 flex-1 flex-col justify-center">
           <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{label}</p>
-          <div className="flex items-baseline gap-1.5">
+          <div className="flex items-baseline gap-1.5 whitespace-nowrap">
             <p className="truncate text-base font-semibold text-white">{value}</p>
             {sub && <p className="truncate text-xs text-zinc-500">{sub}</p>}
           </div>
-          <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/10">
-            <div
-              className="h-full rounded-full bg-violet-500 transition-all duration-500"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
+          {hasBar && (
+            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-violet-500 transition-all duration-500"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          )}
         </div>
       </Card>
     </motion.div>
@@ -66,16 +70,15 @@ function ConsoleTab({ server }) {
   const wsRef = useRef(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState('');
-  const [installing, setInstalling] = useState(server.status === 'installing');
 
   useEffect(() => {
-    setInstalling(server.status === 'installing');
-  }, [server.status]);
-
-  useEffect(() => {
+    const installing = server.status === 'installing';
     let term;
     let pollId;
     let disposed = false;
+
+    function setConn(v) { if (!disposed) setConnected(v); }
+    function setErr(v) { if (!disposed) setError(v); }
 
     async function init() {
       term = new Terminal({
@@ -115,16 +118,16 @@ function ConsoleTab({ server }) {
       const ws = new WebSocket(socket);
       wsRef.current = ws;
       ws.onopen = () => {
-        setConnected(true);
+        setConn(true);
         term.clear();
         term.writeln('\x1b[32m● Connected. Server output will appear here.\x1b[0m');
       };
       ws.onmessage = (ev) => term.write(ev.data);
       ws.onclose = () => {
-        setConnected(false);
+        setConn(false);
         term.writeln('\r\n\x1b[31m● Disconnected.\x1b[0m');
       };
-      ws.onerror = () => setError('WebSocket error');
+      ws.onerror = () => setErr('WebSocket error');
 
       term.onData((data) => {
         if (ws.readyState === WebSocket.OPEN) ws.send(data);
@@ -139,7 +142,7 @@ function ConsoleTab({ server }) {
       ws.addEventListener('close', () => document.removeEventListener('visibilitychange', onVis));
     }
 
-    init().catch((e) => setError(e.message));
+    init().catch((e) => setErr(e.message));
 
     return () => {
       disposed = true;
@@ -147,7 +150,9 @@ function ConsoleTab({ server }) {
       try { wsRef.current?.close(); } catch {}
       try { term?.dispose(); } catch {}
     };
-  }, [server.id, installing]);
+  }, [server.id, server.status]);
+
+  const installing = server.status === 'installing';
 
   return (
     <div>
@@ -176,6 +181,16 @@ function formatBytes(bytes) {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / k ** i).toFixed(1))} ${sizes[i]}`;
+}
+
+function Modal({ children, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
+      <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+        {children}
+      </Card>
+    </div>
+  );
 }
 
 function FileIcon({ type, name }) {
@@ -303,14 +318,20 @@ function FilesTab({ server }) {
   async function upload(e) {
     const file = e.target.files[0];
     if (!file) return;
-    const text = await file.text();
-    try {
-      await api.writeFile(server.id, join(path, file.name), text);
-      showToast(`Uploaded ${file.name}`);
-      load(path);
-    } catch (err) {
-      setError(err.message);
-    }
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const dataUrl = ev.target.result;
+      const base64 = dataUrl.split(',')[1];
+      try {
+        await api.writeFile(server.id, join(path, file.name), base64, 'base64');
+        showToast(`Uploaded ${file.name}`);
+        load(path);
+      } catch (err) {
+        setError(err.message);
+      }
+    };
+    reader.onerror = () => setError('Failed to read file');
+    reader.readAsDataURL(file);
   }
 
   function toggleSelect(name) {
@@ -422,14 +443,6 @@ function FilesTab({ server }) {
   function openDelete(f) {
     setModal({ type: 'delete', file: f });
   }
-
-  const Modal = ({ children, onClose }) => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
-      <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-        {children}
-      </Card>
-    </div>
-  );
 
   return (
     <div className="space-y-4">
@@ -846,7 +859,7 @@ function StartupTab({ server }) {
             <label className="label">{v.name} <span className="normal-case text-zinc-600">· {v.env_variable}</span></label>
             <input
               className="input font-mono"
-              value={env[v.env_variable] ?? v.default_value}
+              value={env[v.env_variable] !== undefined ? env[v.env_variable] : v.default_value}
               onChange={(e) => setEnv((x) => ({ ...x, [v.env_variable]: e.target.value }))}
               disabled={!v.user_editable}
               placeholder={v.description || ''}
@@ -1146,7 +1159,7 @@ function UsersTab({ server }) {
                   <p className="font-medium text-white">{su.username}</p>
                   <p className="text-xs text-zinc-500">{su.email}</p>
                 </td>
-                <td className="px-4 py-3"><span className="font-mono text-xs text-zinc-400">{su.permissions.join(', ') || 'none'}</span></td>
+                <td className="px-4 py-3"><span className="font-mono text-xs text-zinc-400">{su.permissions?.join(', ') || 'none'}</span></td>
                 <td className="px-4 py-3 text-right">
                   <button className="btn-danger !px-3 !py-1 text-xs" onClick={() => remove(su)}>Remove</button>
                 </td>
@@ -1186,14 +1199,10 @@ function BackupsTab({ server }) {
 
   async function download(b) {
     try {
-      const d = await api.downloadBackup(b.id);
-      const blob = new Blob([JSON.stringify(d)], { type: 'application/gzip' });
-      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = api.downloadBackup(b.id);
       a.download = `${b.name}.tar.gz`;
       a.click();
-      URL.revokeObjectURL(url);
     } catch (e) {
       setError(e.message);
     }
@@ -1456,11 +1465,11 @@ export default function ServerDetail() {
   const statCards = resources ? [
     { icon: <Icons.Node className="h-5 w-5" />, label: 'Address', value: address, sub: server.node_fqdn },
     { icon: <Icons.Clock className="h-5 w-5" />, label: 'Uptime', value: isOffline ? 'Offline' : formatUptime(resources.uptime_seconds) },
-    { icon: <Icons.Cpu className="h-5 w-5" />, label: 'CPU Load', value: `${resources.cpu}%`, sub: `/ ${server.cpu}%`, bar: (resources.cpu / server.cpu) * 100 },
-    { icon: <Icons.Ram className="h-5 w-5" />, label: 'Memory', value: formatMemory(resources.memory_mb), sub: `/ ${formatMemory(memLimitMb)}`, bar: (resources.memory_mb / memLimitMb) * 100 },
-    { icon: <Icons.Disk className="h-5 w-5" />, label: 'Disk', value: formatMemory(resources.disk_mb), sub: `/ ${formatMemory(diskLimitMb)}`, bar: (resources.disk_mb / diskLimitMb) * 100 },
-    { icon: <Icons.CloudDown className="h-5 w-5" />, label: 'Network (In)', value: `${resources.network_rx_mb} MiB` },
-    { icon: <Icons.CloudUp className="h-5 w-5" />, label: 'Network (Out)', value: `${resources.network_tx_mb} MiB` },
+    { icon: <Icons.Cpu className="h-5 w-5" />, label: 'CPU Load', value: isOffline ? '—' : `${resources.cpu}%`, sub: isOffline ? undefined : `/ ${server.cpu}%`, bar: isOffline ? 0 : (resources.cpu / server.cpu) * 100 },
+    { icon: <Icons.Ram className="h-5 w-5" />, label: 'Memory', value: isOffline ? '—' : formatMemory(resources.memory_mb), sub: isOffline ? undefined : `/ ${formatMemory(memLimitMb)}`, bar: isOffline ? 0 : (resources.memory_mb / memLimitMb) * 100 },
+    { icon: <Icons.Disk className="h-5 w-5" />, label: 'Disk', value: isOffline ? '—' : formatMemory(resources.disk_mb), sub: isOffline ? undefined : `/ ${formatMemory(diskLimitMb)}`, bar: isOffline ? 0 : (resources.disk_mb / diskLimitMb) * 100 },
+    { icon: <Icons.CloudDown className="h-5 w-5" />, label: 'Network (In)', value: isOffline ? '—' : `${resources.network_rx_mb} MiB` },
+    { icon: <Icons.CloudUp className="h-5 w-5" />, label: 'Network (Out)', value: isOffline ? '—' : `${resources.network_tx_mb} MiB` },
   ] : [];
 
   return (

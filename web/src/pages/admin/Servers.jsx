@@ -1,6 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../../api.js';
 import { Card, GlowButton, Icons, MultiSelect, SectionHeader, Select, ShineCard, StatusBadge, cn } from '../../components/ui.jsx';
+
+function useDebouncedCallback(cb, delay = 300) {
+  const timeout = useRef(null);
+  return (...args) => {
+    if (timeout.current) clearTimeout(timeout.current);
+    timeout.current = setTimeout(() => cb(...args), delay);
+  };
+}
 
 function Field({ label, hint, children }) {
   return (
@@ -72,7 +80,7 @@ function CreateServerForm({ onCreated }) {
     api.admin.egg(form.egg_id).then((d) => {
       setEggVars(d.variables);
       const e = d.egg;
-      setForm((f) => ({ ...f, docker_image: f.docker_image || e.docker_image }));
+      setForm((f) => ({ ...f, docker_image: e.docker_image }));
       // Seed env with defaults
       const merged = {};
       for (const v of d.variables) merged[v.env_variable] = v.default_value;
@@ -118,7 +126,7 @@ function CreateServerForm({ onCreated }) {
     const next = { ...env, [key]: value };
     setEnv(next);
     // Live-update the startup preview
-    let preview = eggs.find((e) => e.id === form.egg_id)?.startup_command || '';
+    let preview = eggs.find((e) => String(e.id) === String(form.egg_id))?.startup_command || '';
     preview = preview.replace(/\{\{([A-Z0-9_]+)\}\}/g, (m, name) => next[name] ?? m);
     setStartupPreview(preview);
   }
@@ -384,6 +392,8 @@ export default function Servers() {
     }
   }
 
+  const debouncedLoad = useDebouncedCallback((s) => load(s), 300);
+
   useEffect(() => { load(); }, []);
 
   async function assignServer(serverId, userId) {
@@ -447,7 +457,7 @@ export default function Servers() {
             className="input !pl-9"
             placeholder="Search by name, ID, owner…"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); load(e.target.value); }}
+            onChange={(e) => { setSearch(e.target.value); debouncedLoad(e.target.value); }}
           />
         </div>
       </div>

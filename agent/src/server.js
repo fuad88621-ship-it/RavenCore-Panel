@@ -83,7 +83,7 @@ app.post('/servers/:uuid/files/read', async (req, res) => {
 
 app.post('/servers/:uuid/files/write', async (req, res) => {
   try {
-    res.json(await docker.writeFile(req.params.uuid, req.body.path, req.body.content));
+    res.json(await docker.writeFile(req.params.uuid, req.body.path, req.body.content, req.body.encoding));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

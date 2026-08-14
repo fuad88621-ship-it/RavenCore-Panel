@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../api.js';
 import { useAuth, useSettings } from '../App.jsx';
@@ -93,36 +93,9 @@ function BentoStat({ label, value, suffix, decimals = 0, icon, color, delay = 0 
   );
 }
 
-function MiniSpark({ data, color = 'violet' }) {
-  const colors = {
-    violet: { fill: 'rgba(139,92,246,0.25)', stroke: '#a78bfa' },
-    emerald: { fill: 'rgba(16,185,129,0.25)', stroke: '#34d399' },
-    sky: { fill: 'rgba(56,189,248,0.25)', stroke: '#38bdf8' },
-  };
-  const c = colors[color];
-  const max = Math.max(1, ...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  const w = 120;
-  const h = 32;
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1 || 1)) * w;
-    const y = h - ((v - min) / range) * (h - 4) - 2;
-    return `${x},${y}`;
-  });
-  const area = `0,${h} ${points.join(' ')} ${w},${h}`;
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="h-8 w-28 overflow-visible" preserveAspectRatio="none">
-      <polygon points={area} fill={c.fill} />
-      <polyline points={points.join(' ')} fill="none" stroke={c.stroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ServerCard({ server }) {
+const ServerCard = React.memo(function ServerCard({ server }) {
   const status = server.suspended ? 'suspended' : server.status || 'offline';
   const isRunning = status === 'running';
-  const cpuData = [30, 45, 25, 60, 40, 55, 35, 50, 45, 60, 40, 35];
 
   return (
     <Link to={`/servers/${server.id}`}>
@@ -141,10 +114,7 @@ function ServerCard({ server }) {
           <StatusBadge status={status} />
         </div>
         <div className="mt-5">
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-600">CPU history</p>
-            <MiniSpark data={cpuData} color={isRunning ? 'emerald' : 'violet'} />
-          </div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-600">Limits</p>
           <p className="mt-2 text-xs text-zinc-400">
             {server.cpu}% CPU · {fmtMb(server.memory_mb)} RAM · {fmtMb(server.disk_mb || 0)} disk
           </p>
@@ -152,7 +122,7 @@ function ServerCard({ server }) {
       </SpotlightCard>
     </Link>
   );
-}
+});
 
 function QuickActionCard({ to, title, desc, icon, gradient }) {
   return (
@@ -176,24 +146,52 @@ function QuickActionCard({ to, title, desc, icon, gradient }) {
 }
 
 const QUICK_ACTIONS = [
-  { to: '/', title: 'Servers', desc: 'Manage your servers', gradient: 'from-emerald-500/30 to-teal-500/15', icon: SlotIcon },
+  { to: '/#servers', title: 'Servers', desc: 'Manage your servers', gradient: 'from-emerald-500/30 to-teal-500/15', icon: SlotIcon },
   { to: '/admin/settings', title: 'Settings', desc: 'Panel configuration', gradient: 'from-amber-500/25 to-orange-500/10', icon: Icons.Gear({ className: 'h-5 w-5' }) },
 ];
 
+const PAGE_SIZE = 24;
+
 export default function Dashboard() {
   const { user } = useAuth();
+  const location = useLocation();
   const [servers, setServers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const toast = useToast();
 
   useEffect(() => {
     api.servers().then((d) => setServers(d.servers)).catch((e) => setError(e.message)).finally(() => setLoading(false));
   }, []);
 
-  const running = servers.filter((s) => s.status === 'running').length;
-  const totalMem = servers.reduce((s, x) => s + (x.memory_mb || 0), 0);
-  const totalCpu = servers.reduce((s, x) => s + (x.cpu || 0), 0);
+  // Scroll to hash anchor once data has loaded.
+  useEffect(() => {
+    if (loading) return;
+    if (location.hash === '#servers') {
+      const el = document.getElementById('servers');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [loading, location.hash]);
+
+  const filteredServers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return servers;
+    return servers.filter((s) =>
+      (s.name || '').toLowerCase().includes(q) ||
+      (s.egg_name || '').toLowerCase().includes(q) ||
+      (s.identifier || '').toLowerCase().includes(q)
+    );
+  }, [servers, search]);
+
+  const visibleServers = useMemo(() => filteredServers.slice(0, visibleCount), [filteredServers, visibleCount]);
+
+  const running = useMemo(() => servers.filter((s) => s.status === 'running').length, [servers]);
+  const totalMem = useMemo(() => servers.reduce((s, x) => s + (x.memory_mb || 0), 0), [servers]);
+  const totalCpu = useMemo(() => servers.reduce((s, x) => s + (x.cpu || 0), 0), [servers]);
+  const settings = useSettings();
+  const panelName = settings['app.name'] || 'Panel';
 
   if (loading) {
     return (
@@ -213,9 +211,6 @@ export default function Dashboard() {
       </div>
     );
   }
-
-  const settings = useSettings();
-  const panelName = settings['app.name'] || 'Panel';
 
   return (
     <div className="space-y-8">
@@ -248,20 +243,47 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* Recent servers */}
-      <section className="space-y-5">
-        <SectionHeader title="Servers" />
+      {/* Servers */}
+      <section id="servers" className="space-y-5 scroll-mt-24">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <SectionHeader title="Servers" />
+          {servers.length > 0 && (
+            <div className="relative max-w-xs">
+              <Icons.Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+              <input
+                className="input !pl-9"
+                placeholder="Search servers…"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setVisibleCount(PAGE_SIZE); }}
+              />
+            </div>
+          )}
+        </div>
         {error && <p className="text-sm text-red-400">{error}</p>}
         {servers.length === 0 ? (
           <EmptyState icon={<Icons.Server className="h-12 w-12 text-zinc-500" />} title="No servers yet" sub="Ask your host to create a server for you." />
+        ) : filteredServers.length === 0 ? (
+          <EmptyState icon={<Icons.Search className="h-12 w-12 text-zinc-500" />} title="No matches" sub={`No servers match "${search}".`} />
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {servers.map((s, i) => (
-              <motion.div key={s.id} initial={{ opacity: 0, y: 16, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.4, delay: i * 0.06, ease: [0.22, 1, 0.36, 1] }}>
-                <ServerCard server={s} />
-              </motion.div>
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {visibleServers.map((s, i) => (
+                <motion.div key={s.id} initial={{ opacity: 0, y: 16, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.4, delay: Math.min(i, 24) * 0.03, ease: [0.22, 1, 0.36, 1] }}>
+                  <ServerCard server={s} />
+                </motion.div>
+              ))}
+            </div>
+            {visibleCount < filteredServers.length && (
+              <div className="flex justify-center pt-2">
+                <button
+                  className="btn-ghost"
+                  onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                >
+                  Load more ({filteredServers.length - visibleCount} remaining)
+                </button>
+              </div>
+            )}
+          </>
         )}
       </section>
 

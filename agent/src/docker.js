@@ -373,10 +373,11 @@ export async function readFile(uuid, relPath) {
   return { path: relPath, content };
 }
 
-export async function writeFile(uuid, relPath, content) {
+export async function writeFile(uuid, relPath, content, encoding = 'utf8') {
   const target = safeResolve(uuid, relPath);
   await fs.mkdir(path.dirname(target), { recursive: true });
-  await fs.writeFile(target, content, 'utf8');
+  const data = encoding === 'base64' ? Buffer.from(content, 'base64') : content;
+  await fs.writeFile(target, data, encoding === 'base64' ? undefined : 'utf8');
   return { ok: true };
 }
 

@@ -151,17 +151,12 @@ function Sidebar({ user, onLogout, nav }) {
   );
 }
 
-function MobileNav({ user, onLogout }) {
+function MobileNav({ user, onLogout, nav }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const settings = useSettings();
   const panelName = settings['app.name'] || 'Panel';
   const [open, setOpen] = useState(false);
-
-  const nav = [
-    { to: '/', label: 'Dashboard', icon: Icons.Home, end: true },
-    ...(user?.root_admin ? [{ to: '/admin', label: 'Admin', icon: Icons.Shield }] : []),
-  ];
 
   return (
     <>
@@ -285,16 +280,16 @@ function Layout({ children }) {
   ];
   if (user?.root_admin) {
     nav.push(
-      { to: '/admin', label: 'Overview', icon: Icons.Home },
-      { to: '/admin/settings', label: 'Settings', icon: Icons.Gear },
-      { to: '/admin/api-keys', label: 'Application API', icon: Icons.Key },
-      { to: '/admin/databases', label: 'Databases', icon: Icons.Database },
-      { to: '/admin/locations', label: 'Locations', icon: Icons.MapPin },
-      { to: '/admin/nodes', label: 'Nodes', icon: Icons.Node },
-      { to: '/admin/servers', label: 'Servers', icon: Icons.Server },
-      { to: '/admin/users', label: 'Users', icon: Icons.Users },
-      { to: '/admin/mounts', label: 'Mounts', icon: Icons.Folder },
-      { to: '/admin/nests', label: 'Nests', icon: Icons.Egg },
+      { to: '/admin', label: 'Overview', icon: Icons.Home, end: true },
+      { to: '/admin/settings', label: 'Settings', icon: Icons.Gear, end: true },
+      { to: '/admin/api-keys', label: 'Application API', icon: Icons.Key, end: true },
+      { to: '/admin/databases', label: 'Databases', icon: Icons.Database, end: true },
+      { to: '/admin/locations', label: 'Locations', icon: Icons.MapPin, end: true },
+      { to: '/admin/nodes', label: 'Nodes', icon: Icons.Node, end: true },
+      { to: '/admin/servers', label: 'Servers', icon: Icons.Server, end: true },
+      { to: '/admin/users', label: 'Users', icon: Icons.Users, end: true },
+      { to: '/admin/mounts', label: 'Mounts', icon: Icons.Folder, end: true },
+      { to: '/admin/nests', label: 'Nests', icon: Icons.Egg, end: true },
     );
   }
 
@@ -307,7 +302,7 @@ function Layout({ children }) {
       </div>
       <Sidebar user={user} onLogout={logout} nav={nav} />
       <div className="lg:pl-[280px]">
-        <MobileNav user={user} onLogout={logout} />
+        <MobileNav user={user} onLogout={logout} nav={nav} />
         <main className="mx-auto w-full max-w-7xl px-4 pb-16 pt-6 sm:px-6 sm:pt-8 lg:px-8">
           <AnimatePresence mode="wait">
             <motion.div

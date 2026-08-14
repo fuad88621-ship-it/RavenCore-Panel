@@ -45,7 +45,7 @@ export default function Settings() {
           <div key={f.key}>
             <label className="label">{f.label}</label>
             {f.type === 'select' ? (
-              <Select value={settings[f.key] || ''} onChange={(e) => setSettings((s) => ({ ...s, [f.key]: e.target.value }))}>
+              <Select value={String(settings[f.key] ?? '')} onChange={(e) => setSettings((s) => ({ ...s, [f.key]: e.target.value }))}>
                 {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
               </Select>
             ) : f.type === 'textarea' ? (

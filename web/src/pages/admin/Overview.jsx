@@ -71,7 +71,7 @@ export default function Overview() {
             </tr>
           </thead>
           <tbody>
-            {data.nodeStats.map((n) => (
+            {(data.nodeStats || []).map((n) => (
               <tr key={n.name} className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.03]">
                 <td className="px-4 py-3 font-medium text-white">{n.name}</td>
                 <td className="px-4 py-3">{n.server_count}</td>

@@ -309,7 +309,7 @@ export function Select({ value, onChange, children, className, disabled }) {
   }, [open]);
 
   const options = React.Children.toArray(children).filter((c) => c.type === 'option');
-  const selected = options.find((c) => c.props.value === value);
+  const selected = options.find((c) => String(c.props.value ?? '') === String(value ?? ''));
 
   return (
     <div ref={ref} className={cn('relative', className)}>
@@ -330,12 +330,12 @@ export function Select({ value, onChange, children, className, disabled }) {
         <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-white/[0.08] bg-[#0c0c10] py-1 shadow-2xl">
           {options.map((opt) => (
             <button
-              key={opt.props.value}
+              key={String(opt.props.value ?? '') + '-' + String(opt.props.children)}
               type="button"
               onClick={() => { onChange({ target: { value: opt.props.value } }); setOpen(false); }}
               className={cn(
                 'block w-full px-4 py-2 text-left text-sm transition-colors',
-                opt.props.value === value ? 'bg-violet-500/15 text-violet-200' : 'text-zinc-300 hover:bg-white/[0.05] hover:text-white'
+                String(opt.props.value ?? '') === String(value ?? '') ? 'bg-violet-500/15 text-violet-200' : 'text-zinc-300 hover:bg-white/[0.05] hover:text-white'
               )}
             >
               {opt.props.children}
@@ -358,11 +358,13 @@ export function MultiSelect({ value = [], onChange, children, placeholder = 'Sel
   }, [open]);
 
   const options = React.Children.toArray(children).filter((c) => c.type === 'option');
-  const selectedSet = new Set(value);
-  const selectedLabels = options.filter((c) => selectedSet.has(c.props.value)).map((c) => c.props.children);
+  const strValue = value.map((v) => String(v ?? ''));
+  const selectedSet = new Set(strValue);
+  const selectedLabels = options.filter((c) => selectedSet.has(String(c.props.value ?? ''))).map((c) => c.props.children);
 
   function toggle(v) {
-    const next = selectedSet.has(v) ? value.filter((x) => x !== v) : [...value, v];
+    const sv = String(v ?? '');
+    const next = selectedSet.has(sv) ? value.filter((x) => String(x ?? '') !== sv) : [...value, v];
     onChange(next);
   }
 
@@ -386,10 +388,10 @@ export function MultiSelect({ value = [], onChange, children, placeholder = 'Sel
       {open && (
         <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-white/[0.08] bg-[#0c0c10] py-1 shadow-2xl">
           {options.map((opt) => {
-            const selected = selectedSet.has(opt.props.value);
+            const selected = selectedSet.has(String(opt.props.value ?? ''));
             return (
               <button
-                key={opt.props.value}
+                key={String(opt.props.value ?? '') + '-' + String(opt.props.children)}
                 type="button"
                 onClick={() => toggle(opt.props.value)}
                 className={cn(
