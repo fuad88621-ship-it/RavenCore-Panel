@@ -93,10 +93,11 @@ export function AnimatedNumber({ value, decimals = 0, className }) {
 }
 
 // ── Cards ────────────────────────────────────────────────────
-export function Card({ className, children, delay = 0, hover = false, glow = false, ref }) {
+export function Card({ className, children, delay = 0, hover = false, glow = false, ref, ...rest }) {
   return (
     <motion.div
       ref={ref}
+      {...rest}
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay, ease: 'easeOut' }}
