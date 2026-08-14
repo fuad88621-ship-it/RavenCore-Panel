@@ -398,6 +398,56 @@ function AssignModal({ server, onAssign, onCancel }) {
   );
 }
 
+function TransferModal({ server, nodes, onTransfer, onCancel }) {
+  const [nodeId, setNodeId] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const available = (nodes || []).filter((n) => n.id !== server.node_id && n.enabled);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!nodeId) return;
+    setBusy(true);
+    try {
+      await onTransfer(server.id, nodeId);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onCancel}>
+      <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-4 font-semibold text-white">Transfer server</h3>
+        <p className="mb-4 text-sm text-zinc-400">
+          Move <b className="text-white">{server.name}</b> to another node. It will be stopped, its files
+          moved to the destination, and recreated there{server.status === 'running' ? ' (then auto-started)' : ''}.
+        </p>
+        <form onSubmit={submit} className="space-y-4">
+          <select
+            className="input"
+            value={nodeId}
+            onChange={(e) => setNodeId(e.target.value)}
+            required
+          >
+            <option value="">Select destination node…</option>
+            {available.map((n) => (
+              <option key={n.id} value={n.id}>{n.name} — {n.fqdn}:{n.port}</option>
+            ))}
+          </select>
+          {available.length === 0 && (
+            <p className="text-xs text-amber-400">No other enabled nodes available to transfer to.</p>
+          )}
+          <div className="flex gap-2">
+            <button className="btn-primary flex-1" disabled={busy || !nodeId}>{busy ? 'Transferring…' : 'Transfer'}</button>
+            <button type="button" className="btn-ghost flex-1" onClick={onCancel}>Cancel</button>
+          </div>
+        </form>
+      </Card>
+    </div>
+  );
+}
+
 export default function Servers() {
   const { user } = useAuth();
   const [servers, setServers] = useState([]);
@@ -405,6 +455,8 @@ export default function Servers() {
   const [tab, setTab] = useState('mine');
   const [showCreate, setShowCreate] = useState(false);
   const [assigning, setAssigning] = useState(null);
+  const [transferring, setTransferring] = useState(null);
+  const [nodes, setNodes] = useState([]);
   const [error, setError] = useState('');
   const confirm = useConfirm();
 
@@ -441,6 +493,26 @@ export default function Servers() {
     try {
       await api.admin.assignServer(serverId, userId);
       setAssigning(null);
+      load(search);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function openTransfer(s) {
+    try {
+      const d = await api.admin.nodes();
+      setNodes(d.nodes || []);
+      setTransferring(s);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function transferServer(serverId, nodeId) {
+    try {
+      await api.admin.transferServer(serverId, nodeId);
+      setTransferring(null);
       load(search);
     } catch (e) {
       setError(e.message);
@@ -490,6 +562,15 @@ export default function Servers() {
           server={assigning}
           onAssign={assignServer}
           onCancel={() => setAssigning(null)}
+        />
+      )}
+
+      {transferring && (
+        <TransferModal
+          server={transferring}
+          nodes={nodes}
+          onTransfer={transferServer}
+          onCancel={() => setTransferring(null)}
         />
       )}
 
@@ -578,6 +659,7 @@ export default function Servers() {
                     <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => power(s.id, 'start')} disabled={s.status === 'installing'} aria-label={`Start server ${s.name}`}>Start</button>
                   )}
                   <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => toggleSuspend(s)} aria-label={`${s.status === 'suspended' ? 'Unsuspend' : 'Suspend'} server ${s.name}`}>{s.status === 'suspended' ? 'Unsuspend' : 'Suspend'}</button>
+                  <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => openTransfer(s)} aria-label={`Transfer server ${s.name}`}>Transfer</button>
                   <button className="btn-danger !px-2 !py-1 text-xs" onClick={() => remove(s)} aria-label={`Delete server ${s.name}`}>Delete</button>
                 </td>
               </tr>
