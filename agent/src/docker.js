@@ -276,7 +276,19 @@ export async function getResources(uuid) {
       const cpuDelta = stats.cpu_stats.cpu_usage.total_usage - (stats.precpu_stats.cpu_usage?.total_usage || 0);
       const sysDelta = (stats.cpu_stats.system_cpu_usage || 0) - (stats.precpu_stats.system_cpu_usage || 0);
       const onlineCpus = stats.cpu_stats.online_cpus || 1;
-      cpuPct = sysDelta > 0 ? (cpuDelta / sysDelta) * onlineCpus * 100 : 0;
+      // Guard against stale/negative deltas (e.g. precpu_stats from a
+      // previous container instance after a recreate) that would produce
+      // impossible CPU percentages.
+      let cpuPct = 0;
+      if (sysDelta > 0 && cpuDelta >= 0 && cpuDelta <= sysDelta) {
+        cpuPct = (cpuDelta / sysDelta) * onlineCpus * 100;
+      }
+      // Cap at the container's configured limit (NanoCpus) so the panel
+      // never shows usage above what the server is actually allowed.
+      const nanoLimit = info.HostConfig?.NanoCpus || 0;
+      if (nanoLimit > 0) {
+        cpuPct = Math.min(cpuPct, (nanoLimit / 1e9) * 100);
+      }
       memoryMb = stats.memory_stats.usage ? Math.round(stats.memory_stats.usage / 1024 / 1024) : 0;
       memoryLimitMb = stats.memory_stats.limit ? Math.round(stats.memory_stats.limit / 1024 / 1024) : 0;
       const net = stats.networks ? Object.values(stats.networks)[0] : null;
