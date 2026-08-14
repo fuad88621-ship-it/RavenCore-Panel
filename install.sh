@@ -129,8 +129,26 @@ echo -e "  ║     Connect this VPS to your panel         ║"
 echo -e "  ╚══════════════════════════════════════════════╝${C_RESET}"
 echo ""
 
+# ── If the agent is already installed, offer a menu instead of re-asking ──
+if [ -f "/opt/raven-agent/docker-compose.yml" ] && [ -z "$1" ]; then
+  echo -e "  ${C_CYAN}RavenCore agent is already installed on this VPS.${C_RESET}"
+  echo ""
+  echo -e "  ${C_BOLD}1)${C_RESET} Update the agent (re-download + rebuild)"
+  echo -e "  ${C_BOLD}2)${C_RESET} Delete the agent (remove everything RavenCore, keeps other apps)"
+  echo -e "  ${C_BOLD}3)${C_RESET} Reinstall (connect to the panel again)"
+  echo -e "  ${C_BOLD}q)${C_RESET} Quit"
+  echo ""
+  read -rp "  Choose: " CHOICE
+  case "$CHOICE" in
+    1) exec bash "$0" --update ;;
+    2) exec bash "$0" --delete ;;
+    3) echo "" ;;
+    *) exit 0 ;;
+  esac
+fi
+
 # ── Ask questions (with smart defaults) ──────────────────────────
-read -rp "  Panel URL (e.g. https://panel.ravenshop.store): " PANEL_URL
+read -rp "  Panel URL: " PANEL_URL
 PANEL_URL="${PANEL_URL%/}"
 [ -z "$PANEL_URL" ] && fail "Panel URL is required."
 
