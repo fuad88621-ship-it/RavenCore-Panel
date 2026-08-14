@@ -43,6 +43,7 @@ export const api = {
   updateStartup: (id, env) => req(`/api/client/servers/${id}/startup`, { method: 'PATCH', body: JSON.stringify({ env }) }),
   updateSettings: (id, body) => req(`/api/client/servers/${id}/settings`, { method: 'PATCH', body: JSON.stringify(body) }),
   reinstall: (id) => req(`/api/client/servers/${id}/reinstall`, { method: 'POST' }),
+  deleteServer: (id) => req(`/api/client/servers/${id}`, { method: 'DELETE' }),
   schedules: (id) => req(`/api/client/servers/${id}/schedules`),
   createSchedule: (id, body) => req(`/api/client/servers/${id}/schedules`, { method: 'POST', body: JSON.stringify(body) }),
   updateSchedule: (id, body) => req(`/api/client/schedules/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),

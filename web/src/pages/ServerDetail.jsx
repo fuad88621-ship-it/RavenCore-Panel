@@ -551,6 +551,18 @@ function SettingsTab({ server, onDeleted }) {
     }
   }
 
+  async function remove() {
+    if (!confirm(`Delete server ${server.name}? This permanently deletes all its files and cannot be undone.`)) return;
+    try {
+      await api.deleteServer(server.id);
+      toast && toast.push('Server deleted');
+      onDeleted();
+    } catch (e) {
+      setError(e.message);
+      toast && toast.push(e.message, 'error');
+    }
+  }
+
   return (
     <div className="max-w-xl space-y-6">
       <div>
@@ -562,10 +574,16 @@ function SettingsTab({ server, onDeleted }) {
         <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
       </div>
       {error && <p className="text-sm text-red-400">{error}</p>}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button className="btn-primary" onClick={save}>Save changes</button>
         <button className="btn-ghost" onClick={reinstall}>Reinstall</button>
         {saved && <span className="text-sm text-emerald-400">Saved ✓</span>}
+      </div>
+
+      <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-5">
+        <h3 className="mb-1 text-sm font-semibold text-red-200">Danger zone</h3>
+        <p className="mb-4 text-xs text-red-200/70">Deleting this server will permanently remove all files, databases, and backups associated with it.</p>
+        <button className="btn-danger" onClick={remove}>Delete server</button>
       </div>
     </div>
   );

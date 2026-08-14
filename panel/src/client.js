@@ -257,4 +257,18 @@ export async function clientRoutes(fastify) {
     });
     return { ok: true };
   });
+
+  // Delete own server
+  fastify.delete('/api/client/servers/:id', { preHandler: requireAuth }, async (req, reply) => {
+    const server = await getServerForUser(req, reply);
+    if (!server) return;
+    try {
+      await agentRequest(`/servers/${server.uuid}`, 'DELETE');
+    } catch (e) {
+      console.error('[client] agent delete failed:', e.message);
+    }
+    await q(`UPDATE allocations SET server_id = NULL WHERE server_id = $1`, [server.id]);
+    await q(`DELETE FROM servers WHERE id = $1`, [server.id]);
+    return { ok: true };
+  });
 }
