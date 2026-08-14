@@ -725,6 +725,46 @@ export const Icons = {
       <path d="M12 4v12M7 13l5 5 5-5" /><path d="M4 20h16" />
     </svg>
   ),
+  Pencil: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <path d="M4 16.5V21h4.5L18 11.5 13.5 7 4 16.5z" /><path d="M14.5 5.5l4 4" />
+    </svg>
+  ),
+  X: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <path d="M18 6L6 18M6 6l12 12" />
+    </svg>
+  ),
+  List: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  ),
+  Grid: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  ),
+  Archive: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" /><path d="M9 12h6" />
+    </svg>
+  ),
+  Extract: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <path d="M4 10h16M4 10v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V10M12 4v8" /><path d="M8 8l4-4 4 4" />
+    </svg>
+  ),
+  FilePlus: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M12 12v6M9 15h6" />
+    </svg>
+  ),
+  FolderPlus: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M12 11v6M9 14h6" />
+    </svg>
+  ),
   Trash: (p) => (
     <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
       <path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14" />

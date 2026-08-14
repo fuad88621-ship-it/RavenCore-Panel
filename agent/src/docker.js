@@ -356,10 +356,13 @@ export async function listFiles(uuid, relPath) {
   const files = await Promise.all(entries.map(async (e) => {
     const full = path.join(dir, e.name);
     let size = 0;
-    if (e.isFile()) {
-      try { size = (await fs.stat(full)).size; } catch {}
-    }
-    return { name: e.name, type: e.isDirectory() ? 'dir' : 'file', size };
+    let modifiedAt = null;
+    try {
+      const st = await fs.stat(full);
+      size = st.size;
+      modifiedAt = st.mtime.toISOString();
+    } catch {}
+    return { name: e.name, type: e.isDirectory() ? 'dir' : 'file', size, modifiedAt };
   }));
   return { path: relPath || '/', files };
 }
