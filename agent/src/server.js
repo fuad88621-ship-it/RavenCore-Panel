@@ -130,6 +130,32 @@ app.post('/servers/:uuid/files/mkdir', async (req, res) => {
   }
 });
 
+// ---- Plugins ----
+
+app.get('/servers/:uuid/plugins', async (req, res) => {
+  try {
+    res.json(await docker.listPlugins(req.params.uuid));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/servers/:uuid/plugins/install', async (req, res) => {
+  try {
+    res.status(201).json(await docker.installPlugin(req.params.uuid, req.body.url, req.body.filename));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/servers/:uuid/plugins/:filename', async (req, res) => {
+  try {
+    res.json(await docker.deletePlugin(req.params.uuid, req.params.filename));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/servers/:uuid/files/download', async (req, res) => {
   try {
     const target = docker.downloadFilePath(req.params.uuid, req.query.path);

@@ -225,6 +225,51 @@ export async function clientRoutes(fastify) {
     return { log };
   });
 
+  // Plugins (Modrinth marketplace)
+  fastify.get('/api/client/servers/:id/plugins/search', { preHandler: requireAuth }, async (req, reply) => {
+    const server = await getServerForUser(req, reply);
+    if (!server) return;
+    const qq = String(req.query.q || '').trim();
+    if (qq.length < 2) return { hits: [] };
+    const res = await fetch(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(qq)}&facets=${encodeURIComponent(JSON.stringify([['project_type:plugin']]))}&limit=12`);
+    if (!res.ok) return reply.code(502).send({ error: 'Plugin search failed' });
+    const data = await res.json();
+    return { hits: (data.hits || []).map((h) => ({
+      project_id: h.project_id, title: h.title, description: h.description,
+      downloads: h.downloads, icon_url: h.icon_url, author: h.author, slug: h.slug,
+    })) };
+  });
+
+  fastify.get('/api/client/servers/:id/plugins', { preHandler: requireAuth }, async (req, reply) => {
+    const server = await getServerForUser(req, reply);
+    if (!server) return;
+    return await agentRequest(`/servers/${server.uuid}/plugins`, 'GET');
+  });
+
+  fastify.post('/api/client/servers/:id/plugins/install', { preHandler: requireAuth }, async (req, reply) => {
+    const server = await getServerForUser(req, reply);
+    if (!server) return;
+    const { project_id } = req.body || {};
+    if (!project_id) return reply.code(400).send({ error: 'project_id is required' });
+    // Fetch the project's latest version and grab the first jar file
+    const res = await fetch(`https://api.modrinth.com/v2/project/${encodeURIComponent(project_id)}/version`);
+    if (!res.ok) return reply.code(502).send({ error: 'Failed to fetch plugin versions' });
+    const versions = await res.json();
+    const version = (versions || []).find((v) => v.files && v.files.length > 0);
+    if (!version) return reply.code(404).send({ error: 'No downloadable version found' });
+    const file = version.files[0];
+    const result = await agentRequest(`/servers/${server.uuid}/plugins/install`, 'POST', {
+      url: file.url, filename: file.filename,
+    });
+    return { ok: true, filename: result.filename, size: result.size, version: version.version_number };
+  });
+
+  fastify.delete('/api/client/servers/:id/plugins/:filename', { preHandler: requireAuth }, async (req, reply) => {
+    const server = await getServerForUser(req, reply);
+    if (!server) return;
+    return await agentRequest(`/servers/${server.uuid}/plugins/${encodeURIComponent(req.params.filename)}`, 'DELETE');
+  });
+
   // Databases
   fastify.get('/api/client/servers/:id/databases', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);

@@ -1595,6 +1595,132 @@ function NetworkTab({ server }) {
   );
 }
 
+function PluginsTab({ server }) {
+  const [query, setQuery] = useState('');
+  const [hits, setHits] = useState([]);
+  const [installed, setInstalled] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [installing, setInstalling] = useState(null);
+  const [error, setError] = useState('');
+  const toast = useToast();
+
+  async function loadInstalled() {
+    try {
+      const d = await api.plugins(server.id);
+      setInstalled(d.plugins || []);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  useEffect(() => { loadInstalled(); }, [server.id]);
+
+  async function doSearch(q) {
+    if (q.trim().length < 2) { setHits([]); return; }
+    setSearching(true);
+    try {
+      const d = await api.pluginsSearch(server.id, q);
+      setHits(d.hits || []);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function install(p) {
+    setInstalling(p.project_id);
+    setError('');
+    try {
+      const d = await api.pluginInstall(server.id, p.project_id);
+      toast.push(`Installed ${d.filename}`);
+      await loadInstalled();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setInstalling(null);
+    }
+  }
+
+  async function remove(f) {
+    if (!confirm(`Delete plugin ${f.name}?`)) return;
+    try {
+      await api.pluginDelete(server.id, f.name);
+      toast.push(`Deleted ${f.name}`);
+      await loadInstalled();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="mb-1 font-semibold text-white">Installed Plugins</h3>
+        <p className="mb-3 text-xs text-zinc-500">Restart the server after installing or removing plugins.</p>
+        {installed.length === 0 ? (
+          <p className="text-sm text-zinc-500">No plugins installed yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {installed.map((f) => (
+              <div key={f.name} className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5">
+                <Icons.Box className="h-4 w-4 shrink-0 text-violet-300" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-white">{f.name}</p>
+                  <p className="text-xs text-zinc-500">{formatBytes(f.size)}</p>
+                </div>
+                <button className="btn-ghost !px-2 !py-1 text-xs" onClick={() => remove(f)} aria-label={`Delete plugin ${f.name}`}>Delete</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h3 className="mb-1 font-semibold text-white">Search Plugins</h3>
+        <p className="mb-3 text-xs text-zinc-500">Browse the Modrinth plugin marketplace and install with one click.</p>
+        <div className="relative max-w-md">
+          <Icons.Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+          <input
+            className="input !pl-9"
+            placeholder="Search plugins… (e.g. EssentialsX, LuckPerms)"
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); doSearch(e.target.value); }}
+            aria-label="Search plugins"
+          />
+        </div>
+        {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+        {searching && <p className="mt-3 text-sm text-zinc-500">Searching…</p>}
+        {!searching && hits.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {hits.map((p) => (
+              <div key={p.project_id} className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-3 transition hover:border-violet-500/30">
+                {p.icon_url ? (
+                  <img src={p.icon_url} alt="" className="h-9 w-9 shrink-0 rounded-lg" />
+                ) : (
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-zinc-400"><Icons.Box className="h-4 w-4" /></span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-white">{p.title}</p>
+                  <p className="truncate text-xs text-zinc-500">{p.description}</p>
+                  <p className="text-[11px] text-zinc-600">{p.author} · {p.downloads.toLocaleString()} downloads</p>
+                </div>
+                <button
+                  className="btn-primary !px-3 !py-1.5 text-xs shrink-0"
+                  onClick={() => install(p)}
+                  disabled={installing === p.project_id}
+                >
+                  {installing === p.project_id ? 'Installing…' : 'Install'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ServerDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -1642,6 +1768,7 @@ export default function ServerDetail() {
     { id: 'users', label: 'Users', icon: <Icons.Users className="h-4 w-4" /> },
     { id: 'backups', label: 'Backups', icon: <Icons.Save className="h-4 w-4" /> },
     { id: 'network', label: 'Network', icon: <Icons.Node className="h-4 w-4" /> },
+    { id: 'plugins', label: 'Plugins', icon: <Icons.Box className="h-4 w-4" /> },
     { id: 'startup', label: 'Startup', icon: <Icons.Play className="h-4 w-4" /> },
     { id: 'activity', label: 'Activity', icon: <Icons.Clock className="h-4 w-4" /> },
     { id: 'settings', label: 'Settings', icon: <Icons.Gear className="h-4 w-4" /> },
@@ -1778,6 +1905,7 @@ export default function ServerDetail() {
           {tab === 'users' && <UsersTab server={server} />}
           {tab === 'backups' && <BackupsTab server={server} />}
           {tab === 'network' && <NetworkTab server={server} />}
+          {tab === 'plugins' && <PluginsTab server={server} />}
           {tab === 'startup' && <StartupTab server={server} />}
           {tab === 'activity' && <ActivityTab server={server} />}
           {tab === 'settings' && <SettingsTab server={server} onDeleted={() => navigate('/')} />}

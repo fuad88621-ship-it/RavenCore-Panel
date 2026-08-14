@@ -459,6 +459,47 @@ export function downloadFilePath(uuid, relPath) {
   return safeResolve(uuid, relPath);
 }
 
+// ---- Plugins ----
+
+// Install a plugin jar into the server's plugins directory.
+// The jar is downloaded by the agent (which has internet access) so the
+// panel never has to proxy binary data.
+export async function installPlugin(uuid, url, filename) {
+  if (!url || !/^https?:\/\//.test(url)) throw new Error('Invalid plugin URL');
+  const safe = String(filename || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+  if (!safe.endsWith('.jar')) throw new Error('Plugin must be a .jar file');
+  const pluginsDir = path.join(botDir(uuid), 'plugins');
+  await fs.mkdir(pluginsDir, { recursive: true });
+  const target = path.join(pluginsDir, safe);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Download failed (${res.status})`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length < 1000) throw new Error('Downloaded file is too small to be a plugin');
+  await fs.writeFile(target, buf);
+  return { ok: true, filename: safe, size: buf.length };
+}
+
+export async function listPlugins(uuid) {
+  const pluginsDir = path.join(botDir(uuid), 'plugins');
+  try {
+    const entries = await fs.readdir(pluginsDir, { withFileTypes: true });
+    const plugins = await Promise.all(entries.filter((e) => e.isFile() && e.name.endsWith('.jar')).map(async (e) => {
+      const st = await fs.stat(path.join(pluginsDir, e.name));
+      return { name: e.name, size: st.size, modified_at: st.mtime.toISOString() };
+    }));
+    return { plugins };
+  } catch {
+    return { plugins: [] };
+  }
+}
+
+export async function deletePlugin(uuid, filename) {
+  const safe = String(filename || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+  const target = path.join(botDir(uuid), 'plugins', safe);
+  await fs.rm(target, { force: true });
+  return { ok: true };
+}
+
 // ---- Console attach ----
 
 export async function getInstallLog(uuid) {
