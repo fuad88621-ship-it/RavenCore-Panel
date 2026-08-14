@@ -650,7 +650,7 @@ export async function getHostStats() {
   try {
     const mem = await fs.readFile('/proc/meminfo', 'utf8');
     const get = (k) => {
-      const m = mem.match(new RegExp(`^${k}:\\s+(\\d+)`));
+      const m = mem.match(new RegExp(`^${k}:\\s+(\\d+)`, 'm'));
       return m ? parseInt(m[1], 10) / 1024 : 0;
     };
     memTotalMb = get('MemTotal');
