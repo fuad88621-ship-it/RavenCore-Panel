@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api.js';
+import { useAuth } from '../../App.jsx';
 import { Card, GlowButton, Icons, MultiSelect, SectionHeader, Select, ShineCard, StatusBadge, cn } from '../../components/ui.jsx';
 
 function useDebouncedCallback(cb, delay = 300) {
@@ -377,8 +378,10 @@ function AssignModal({ server, onAssign, onCancel }) {
 }
 
 export default function Servers() {
+  const { user } = useAuth();
   const [servers, setServers] = useState([]);
   const [search, setSearch] = useState('');
+  const [tab, setTab] = useState('mine');
   const [showCreate, setShowCreate] = useState(false);
   const [assigning, setAssigning] = useState(null);
   const [error, setError] = useState('');
@@ -395,6 +398,22 @@ export default function Servers() {
   const debouncedLoad = useDebouncedCallback((s) => load(s), 300);
 
   useEffect(() => { load(); }, []);
+
+  const filteredServers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let list = servers;
+    if (tab === 'mine') {
+      list = list.filter((s) => s.owner_username === user?.username);
+    } else if (tab === 'others') {
+      list = list.filter((s) => s.owner_username !== user?.username);
+    }
+    if (!q) return list;
+    return list.filter((s) =>
+      (s.name || '').toLowerCase().includes(q) ||
+      (s.identifier || '').toLowerCase().includes(q) ||
+      (s.owner_username || '').toLowerCase().includes(q)
+    );
+  }, [servers, search, tab, user?.username]);
 
   async function assignServer(serverId, userId) {
     try {
@@ -450,8 +469,28 @@ export default function Servers() {
         </div>
       )}
 
-      <div className="mb-4 flex items-center gap-2">
-        <div className="relative flex-1 max-w-sm">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center rounded-xl border border-white/[0.06] bg-white/[0.03] p-1">
+          <button
+            onClick={() => { setTab('mine'); setSearch(''); }}
+            className={cn('rounded-lg px-3 py-1.5 text-xs font-medium transition', tab === 'mine' ? 'bg-violet-500/15 text-violet-200' : 'text-zinc-400 hover:text-zinc-200')}
+          >
+            My servers
+          </button>
+          <button
+            onClick={() => { setTab('others'); setSearch(''); }}
+            className={cn('rounded-lg px-3 py-1.5 text-xs font-medium transition', tab === 'others' ? 'bg-violet-500/15 text-violet-200' : 'text-zinc-400 hover:text-zinc-200')}
+          >
+            Others' servers
+          </button>
+          <button
+            onClick={() => { setTab('all'); setSearch(''); }}
+            className={cn('rounded-lg px-3 py-1.5 text-xs font-medium transition', tab === 'all' ? 'bg-violet-500/15 text-violet-200' : 'text-zinc-400 hover:text-zinc-200')}
+          >
+            All
+          </button>
+        </div>
+        <div className="relative max-w-sm">
           <Icons.Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
           <input
             className="input !pl-9"
@@ -476,10 +515,12 @@ export default function Servers() {
             </tr>
           </thead>
           <tbody>
-            {servers.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-6 text-center text-zinc-500">No servers found.</td></tr>
+            {filteredServers.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-6 text-center text-zinc-500">
+                {tab === 'mine' ? 'You do not own any servers.' : tab === 'others' ? 'No servers owned by other users.' : 'No servers found.'}
+              </td></tr>
             )}
-            {servers.map((s) => (
+            {filteredServers.map((s) => (
               <tr key={s.id} className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.03]">
                 <td className="px-4 py-3">
                   <p className="font-medium text-white">{s.name}</p>
