@@ -14,6 +14,37 @@
 set -e
 set -o pipefail
 
+# ── Update mode: re-download + rebuild the agent without asking questions ──
+# Usage: bash <(curl -fsSL .../install.sh) --update
+if [ "$1" = "--update" ]; then
+  AGENT_DIR="/opt/raven-agent"
+  if [ ! -f "$AGENT_DIR/docker-compose.yml" ]; then
+    fail "No existing agent found at ${AGENT_DIR}. Run the installer normally first."
+  fi
+  info "Updating the RavenCore agent…"
+  TARBALL="$(mktemp)"
+  curl -fsSL --max-time 120 -o "$TARBALL" \
+    "https://github.com/fuad88621-ship-it/RavenCore-Panel/archive/refs/heads/main.tar.gz" \
+    || fail "Could not download the agent source."
+  tar -xzf "$TARBALL" -C "$AGENT_DIR" --strip-components=1 2>/dev/null \
+    || fail "Could not extract the agent source."
+  rm -f "$TARBALL"
+  COMPOSE="docker compose"
+  docker compose version >/dev/null 2>&1 || COMPOSE="docker-compose"
+  cd "$AGENT_DIR"
+  info "Rebuilding the agent… (takes a few minutes)"
+  if ! $COMPOSE up -d --build 2>&1 | tee /tmp/raven-agent-update.log | tail -15; then
+    fail "Agent update failed. See output above."
+  fi
+  sleep 4
+  if ! $COMPOSE ps agent 2>/dev/null | grep -q 'Up'; then
+    $COMPOSE logs --tail 20 agent 2>&1 || true
+    fail "Agent is not running after update."
+  fi
+  ok "Agent updated and running!"
+  exit 0
+fi
+
 # ── Colors ─────────────────────────────────────────────────────────
 C_RESET='\033[0m'; C_GREEN='\033[32m'; C_CYAN='\033[36m'; C_YELLOW='\033[33m'; C_RED='\033[31m'; C_BOLD='\033[1m'
 
