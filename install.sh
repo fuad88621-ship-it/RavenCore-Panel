@@ -115,6 +115,17 @@ else
   ok "Docker already installed"
 fi
 
+# Detect docker compose (v2 plugin) vs docker-compose (v1)
+COMPOSE=""
+if docker compose version >/dev/null 2>&1; then
+  COMPOSE="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then
+  COMPOSE="docker-compose"
+else
+  fail "Docker Compose is not installed. Install it: https://docs.docker.com/compose/install/"
+fi
+ok "Using: ${COMPOSE}"
+
 # ── Download the agent ────────────────────────────────────────────
 AGENT_DIR="/opt/raven-agent"
 info "Downloading the RavenCore agent…"
@@ -157,7 +168,10 @@ EOF
 # ── Start the agent ───────────────────────────────────────────────
 info "Building and starting the agent… (first build takes a few minutes)"
 cd "$AGENT_DIR"
-docker compose up -d --build >/dev/null 2>&1 || fail "Agent failed to start. Run 'cd /opt/raven-agent && docker compose logs agent' to see why."
+if ! $COMPOSE up -d --build 2>&1 | tee /tmp/raven-agent-build.log | tail -20; then
+  echo ""
+  fail "Agent failed to start. Last build output above — or run: cd /opt/raven-agent && ${COMPOSE} logs agent"
+fi
 ok "Agent is running!"
 
 # ── Firewall ─────────────────────────────────────────────────────
@@ -183,7 +197,7 @@ echo -e "   2. Add allocations (ports) to the node so servers can be created on 
 echo -e "   3. Create a server and pick this node!"
 echo ""
 echo -e "  Useful commands:"
-echo -e "   Logs:    cd /opt/raven-agent && docker compose logs -f agent"
-echo -e "   Restart: cd /opt/raven-agent && docker compose restart agent"
-echo -e "   Remove:  cd /opt/raven-agent && docker compose down"
+echo -e "   Logs:    cd /opt/raven-agent && ${COMPOSE} logs -f agent"
+echo -e "   Restart: cd /opt/raven-agent && ${COMPOSE} restart agent"
+echo -e "   Remove:  cd /opt/raven-agent && ${COMPOSE} down"
 echo ""
