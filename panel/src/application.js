@@ -1,6 +1,6 @@
 import { q, q1, genUuid, genIdentifier } from './db.js';
 import { requireApiKey, hasPermission } from './api-keys.js';
-import { agentRequest } from './agent-client.js';
+import { agentRequest, agentRequestFor } from './agent-client.js';
 import { renderStartup } from './admin-servers.js';
 import { config } from './config.js';
 

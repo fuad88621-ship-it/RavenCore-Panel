@@ -1,6 +1,6 @@
 import { q, q1, genUuid } from './db.js';
 import { requireAuth } from './auth.js';
-import { agentRequest } from './agent-client.js';
+import { agentRequest, agentRequestFor } from './agent-client.js';
 
 async function getServerForUser(req, reply) {
   const server = await q1(`SELECT * FROM servers WHERE id = $1`, [req.params.id]);

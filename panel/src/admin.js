@@ -134,7 +134,7 @@ export async function adminRoutes(fastify) {
   fastify.post('/api/admin/nodes/register', async (req, reply) => {
     const key = await authApiKey(req);
     if (!key) return reply.code(401).send({ error: 'Invalid API key' });
-    if (!hasPermission(key, 'node:create')) {
+    if (!hasPermission(key, 'node:create') && !hasPermission(key, 'nodes.create')) {
       return reply.code(403).send({ error: 'API key lacks node:create permission' });
     }
     const { name, fqdn, port, scheme, memory_mb, disk_mb, cpu_cores, file_directory, sftp_port } = req.body || {};

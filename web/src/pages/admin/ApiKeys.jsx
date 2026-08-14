@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
 import { Card, GlowButton, Icons, SectionHeader, useConfirm } from '../../components/ui.jsx';
 
-const PERMISSIONS = ['*', 'servers.read', 'servers.create', 'servers.delete', 'servers.power', 'users.read', 'users.create', 'nodes.read', 'locations.read', 'nests.read'];
+const PERMISSIONS = ['*', 'servers.read', 'servers.create', 'servers.delete', 'servers.power', 'users.read', 'users.create', 'nodes.read', 'nodes.create', 'nodes.delete', 'node:create', 'locations.read', 'nests.read'];
 
 export default function ApiKeys() {
   const [keys, setKeys] = useState([]);

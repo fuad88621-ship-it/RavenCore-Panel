@@ -1,6 +1,6 @@
 import { q, q1 } from './db.js';
 import { requireAuth } from './auth.js';
-import { agentRequest } from './agent-client.js';
+import { agentRequest, agentRequestFor } from './agent-client.js';
 
 // ── Simple 5-field cron matcher (minute hour day month weekday) ──
 function cronMatches(cron, date) {

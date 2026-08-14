@@ -1,7 +1,7 @@
 import { q, q1, genUuid, genIdentifier } from './db.js';
 import crypto from 'node:crypto';
 import { requireAdmin } from './auth.js';
-import { agentRequest } from './agent-client.js';
+import { agentRequest, agentRequestFor } from './agent-client.js';
 import { config } from './config.js';
 
 async function logActivity(serverId, userId, action, metadata = {}) {

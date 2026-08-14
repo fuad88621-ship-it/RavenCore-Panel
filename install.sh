@@ -86,7 +86,18 @@ EOF
 RESPONSE="$(curl -fsSL --max-time 20 -X POST "${PANEL_URL}/api/admin/nodes/register" \
   -H "Authorization: Bearer ${API_KEY}" \
   -H "Content-Type: application/json" \
-  -d "$REGISTER_JSON" 2>/dev/null)" || fail "Could not reach the panel. Check the URL and API key."
+  -d "$REGISTER_JSON" 2>/dev/null)" || {
+  # Show the actual error so users know if it's a network or permission issue
+  ERR_BODY="$(curl -sSL --max-time 20 -X POST "${PANEL_URL}/api/admin/nodes/register" \
+    -H "Authorization: Bearer ${API_KEY}" \
+    -H "Content-Type: application/json" \
+    -d "$REGISTER_JSON" 2>/dev/null)"
+  if [ -n "$ERR_BODY" ]; then
+    fail "Registration rejected by the panel: $ERR_BODY"
+  else
+    fail "Could not reach the panel at ${PANEL_URL}. Check the URL, and make sure the API key has the node:create permission."
+  fi
+}
 
 DAEMON_TOKEN="$(echo "$RESPONSE" | sed -n 's/.*"daemon_token":"\([^"]*\)".*/\1/p')"
 if [ -z "$DAEMON_TOKEN" ]; then

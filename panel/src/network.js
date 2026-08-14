@@ -36,7 +36,7 @@ export async function networkRoutes(fastify) {
     }
     // Always sync to the agent so the SFTP server accepts it
     try {
-      const { agentRequest } = await import('./agent-client.js');
+      const { agentRequest, agentRequestFor } = await import('./agent-client.js');
       await agentRequestFor(server.uuid, `/servers/${server.uuid}/sftp`, 'POST', { password: pw });
     } catch (e) {
       console.error('[network] sftp sync failed:', e.message);
@@ -57,7 +57,7 @@ export async function networkRoutes(fastify) {
     await q(`UPDATE servers SET sftp_password = $1 WHERE id = $2`, [pw, server.id]);
     // Sync to the agent so the SFTP server accepts the new password
     try {
-      const { agentRequest } = await import('./agent-client.js');
+      const { agentRequest, agentRequestFor } = await import('./agent-client.js');
       await agentRequestFor(server.uuid, `/servers/${server.uuid}/sftp`, 'POST', { password: pw });
     } catch (e) {
       console.error('[network] sftp sync failed:', e.message);
