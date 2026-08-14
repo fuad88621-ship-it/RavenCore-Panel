@@ -5,26 +5,34 @@
 #
 #    bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh)
 #
-#  It will ask you a few simple questions (panel URL, API key, how much
-#  RAM/disk/CPU to give the node) and do everything else automatically:
-#  install Docker, register the node with your panel, install the agent,
-#  and start it. No technical knowledge needed.
+#  Commands:
+#    (no args)  - install, or show menu if already installed
+#    --update   - re-download + rebuild the agent (no questions)
+#    --delete   - fully remove the agent (keeps other apps like Pterodactyl)
 # ═══════════════════════════════════════════════════════════════════
 
 set -e
 set -o pipefail
 
-# ── Update mode: re-download + rebuild the agent without asking questions ──
-# Usage: bash <(curl -fsSL .../install.sh) --update
-if [ "$1" = "--update" ]; then
+# ── Colors + helpers (defined FIRST so every part of the script can use them) ──
+C_RESET='\033[0m'; C_GREEN='\033[32m'; C_CYAN='\033[36m'; C_YELLOW='\033[33m'; C_RED='\033[31m'; C_BOLD='\033[1m'
+
+info()  { echo -e "${C_CYAN}[i]${C_RESET} $1"; }
+ok()    { echo -e "${C_GREEN}[✓]${C_RESET} $1"; }
+warn()  { echo -e "${C_YELLOW}[!]${C_RESET} $1"; }
+fail()  { echo -e "${C_RED}[✗]${C_RESET} $1"; exit 1; }
+
+REPO_TARBALL="https://github.com/fuad88621-ship-it/RavenCore-Panel/archive/refs/heads/main.tar.gz"
+
+# ── Update: re-download + rebuild the agent ──────────────────────
+update_agent() {
   AGENT_DIR="/opt/raven-agent"
   if [ ! -f "$AGENT_DIR/docker-compose.yml" ]; then
     fail "No existing agent found at ${AGENT_DIR}. Run the installer normally first."
   fi
   info "Updating the RavenCore agent…"
   TARBALL="$(mktemp)"
-  curl -fsSL --max-time 120 -o "$TARBALL" \
-    "https://github.com/fuad88621-ship-it/RavenCore-Panel/archive/refs/heads/main.tar.gz" \
+  curl -fsSL --max-time 120 -o "$TARBALL" "$REPO_TARBALL" \
     || fail "Could not download the agent source."
   tar -xzf "$TARBALL" -C "$AGENT_DIR" --strip-components=1 2>/dev/null \
     || fail "Could not extract the agent source."
@@ -42,17 +50,13 @@ if [ "$1" = "--update" ]; then
     fail "Agent is not running after update."
   fi
   ok "Agent updated and running!"
-  exit 0
-fi
+}
 
-# ── Delete mode: fully remove the RavenCore agent from this VPS ──
-# Usage: bash <(curl -fsSL .../install.sh) --delete
-#
-# SAFETY: this ONLY removes RavenCore's own containers (labeled raven.uuid),
-# networks (raven-*), the agent data dir and the agent source. It will NOT
-# touch Pterodactyl's wings containers, its networks, or any other container
-# on the machine.
-if [ "$1" = "--delete" ]; then
+# ── Delete: fully remove the RavenCore agent from this VPS ───────
+# SAFETY: only removes RavenCore's own containers (labeled raven.uuid),
+# networks (raven-*), the agent data dir and the agent source. Pterodactyl's
+# wings containers/networks are never touched.
+delete_agent() {
   echo ""
   echo -e "${C_RED}${C_BOLD}  ╔══════════════════════════════════════════════════════╗"
   echo -e "  ║  WARNING: this removes the RavenCore agent + ALL its servers  ║"
@@ -70,8 +74,7 @@ if [ "$1" = "--delete" ]; then
     (cd "$AGENT_DIR" && docker compose down 2>/dev/null || true)
   fi
 
-  # 2. Remove ONLY RavenCore server containers (labeled raven.uuid).
-  #    Pterodactyl's containers have different labels and are never matched.
+  # 2. Remove ONLY RavenCore server containers (labeled raven.uuid)
   info "Removing RavenCore server containers…"
   RAVEN_CONTAINERS="$(docker ps -aq --filter 'label=raven.uuid' 2>/dev/null || true)"
   if [ -n "$RAVEN_CONTAINERS" ]; then
@@ -81,7 +84,7 @@ if [ "$1" = "--delete" ]; then
     ok "No RavenCore containers found"
   fi
 
-  # 3. Remove RavenCore networks (raven-*). Pterodactyl uses its own names.
+  # 3. Remove RavenCore networks (raven-*)
   info "Removing RavenCore networks…"
   RAVEN_NETS="$(docker network ls -q --filter 'name=raven-' 2>/dev/null || true)"
   if [ -n "$RAVEN_NETS" ]; then
@@ -106,18 +109,15 @@ if [ "$1" = "--delete" ]; then
   echo -e "  Pterodactyl and all other containers were left untouched."
   echo -e "  Last step: delete the node from the panel → Admin → Nodes → Delete."
   echo ""
-  exit 0
-fi
+}
 
-# ── Colors ─────────────────────────────────────────────────────────
-C_RESET='\033[0m'; C_GREEN='\033[32m'; C_CYAN='\033[36m'; C_YELLOW='\033[33m'; C_RED='\033[31m'; C_BOLD='\033[1m'
+# ── Flag dispatch ─────────────────────────────────────────────────
+case "$1" in
+  --update) update_agent; exit 0 ;;
+  --delete) delete_agent; exit 0 ;;
+esac
 
-info()  { echo -e "${C_CYAN}[i]${C_RESET} $1"; }
-ok()    { echo -e "${C_GREEN}[✓]${C_RESET} $1"; }
-warn()  { echo -e "${C_YELLOW}[!]${C_RESET} $1"; }
-fail()  { echo -e "${C_RED}[✗]${C_RESET} $1"; exit 1; }
-
-# ── Root check ─────────────────────────────────────────────────────
+# ── Root check ────────────────────────────────────────────────────
 if [ "$(id -u)" -ne 0 ]; then
   fail "Please run this script as root:  sudo bash <(curl -fsSL ...)"
 fi
@@ -129,8 +129,8 @@ echo -e "  ║     Connect this VPS to your panel         ║"
 echo -e "  ╚══════════════════════════════════════════════╝${C_RESET}"
 echo ""
 
-# ── If the agent is already installed, offer a menu instead of re-asking ──
-if [ -f "/opt/raven-agent/docker-compose.yml" ] && [ -z "$1" ]; then
+# ── If the agent is already installed, offer a menu ──────────────
+if [ -f "/opt/raven-agent/docker-compose.yml" ]; then
   echo -e "  ${C_CYAN}RavenCore agent is already installed on this VPS.${C_RESET}"
   echo ""
   echo -e "  ${C_BOLD}1)${C_RESET} Update the agent (re-download + rebuild)"
@@ -140,8 +140,8 @@ if [ -f "/opt/raven-agent/docker-compose.yml" ] && [ -z "$1" ]; then
   echo ""
   read -rp "  Choose: " CHOICE
   case "$CHOICE" in
-    1) exec bash "$0" --update ;;
-    2) exec bash "$0" --delete ;;
+    1) update_agent; exit 0 ;;
+    2) delete_agent; exit 0 ;;
     3) echo "" ;;
     *) exit 0 ;;
   esac
@@ -248,8 +248,7 @@ AGENT_DIR="/opt/raven-agent"
 info "Downloading the RavenCore agent…"
 mkdir -p "$AGENT_DIR"
 TARBALL="$(mktemp)"
-curl -fsSL --max-time 120 -o "$TARBALL" \
-  "https://github.com/fuad88621-ship-it/RavenCore-Panel/archive/refs/heads/main.tar.gz" \
+curl -fsSL --max-time 120 -o "$TARBALL" "$REPO_TARBALL" \
   || fail "Could not download the agent source."
 tar -xzf "$TARBALL" -C "$AGENT_DIR" --strip-components=1 2>/dev/null \
   || fail "Could not extract the agent source."
@@ -298,7 +297,7 @@ if ! $COMPOSE ps agent 2>/dev/null | grep -q 'Up'; then
   echo -e "${C_RED}  The agent container is not running. Last logs:${C_RESET}"
   $COMPOSE logs --tail 20 agent 2>&1 || true
   echo ""
-  fail "Agent failed to start. Common cause: a port is already in use. Check with: ss -tlnp | grep -E ':(8080|2022|9000)\\b'"
+  fail "Agent failed to start. Common cause: a port is already in use."
 fi
 ok "Agent is running!"
 
