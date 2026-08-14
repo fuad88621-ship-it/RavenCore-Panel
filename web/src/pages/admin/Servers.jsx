@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Card, GlowButton, Icons, SectionHeader, Select, ShineCard, StatusBadge, cn } from '../../components/ui.jsx';
+import { Card, GlowButton, Icons, MultiSelect, SectionHeader, Select, ShineCard, StatusBadge, cn } from '../../components/ui.jsx';
 
 function Field({ label, hint, children }) {
   return (
@@ -123,13 +123,6 @@ function CreateServerForm({ onCreated }) {
     setStartupPreview(preview);
   }
 
-  function toggleAdditional(id) {
-    setForm((f) => {
-      const cur = f.additional_allocation_ids || [];
-      return { ...f, additional_allocation_ids: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] };
-    });
-  }
-
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
@@ -195,26 +188,23 @@ function CreateServerForm({ onCreated }) {
                 {nodes.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
               </Select>
             </Field>
-            <Field label="Default Allocation">
+            <Field label="Default Allocation" hint="Auto-selected to the next free port. Change it if you need a specific one.">
               <Select value={form.default_allocation_id} onChange={(e) => setForm({ ...form, default_allocation_id: e.target.value })}>
                 <option value="">—</option>
                 {allocations.map((a) => <option key={a.id} value={a.id}>{a.ip}:{a.port}</option>)}
               </Select>
             </Field>
           </div>
-          <Field label="Additional Allocations">
-            <div className="grid max-h-40 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-5">
+          <Field label="Additional Allocation(s)" hint="Pick extra ports if the server needs more than one. Auto-assigned if left empty.">
+            <MultiSelect
+              value={form.additional_allocation_ids}
+              onChange={(ids) => setForm((f) => ({ ...f, additional_allocation_ids: ids }))}
+              placeholder="Select Additional Allocations"
+            >
               {allocations.filter((a) => a.id !== form.default_allocation_id).map((a) => (
-                <button
-                  type="button"
-                  key={a.id}
-                  onClick={() => toggleAdditional(a.id)}
-                  className={cn('rounded-lg border px-2 py-1.5 font-mono text-xs', (form.additional_allocation_ids || []).includes(a.id) ? 'border-violet-500/50 bg-violet-500/15 text-white' : 'border-white/10 text-zinc-400 hover:text-white')}
-                >
-                  {a.ip}:{a.port}
-                </button>
+                <option key={a.id} value={a.id}>{a.ip}:{a.port}</option>
               ))}
-            </div>
+            </MultiSelect>
           </Field>
         </div>
 

@@ -347,6 +347,67 @@ export function Select({ value, onChange, children, className, disabled }) {
   );
 }
 
+// ── Multi-select dropdown ────────────────────────────────────
+export function MultiSelect({ value = [], onChange, children, placeholder = 'Select…', className, disabled }) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef(null);
+
+  useEffect(() => {
+    function onClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    if (open) { document.addEventListener('mousedown', onClick); return () => document.removeEventListener('mousedown', onClick); }
+  }, [open]);
+
+  const options = React.Children.toArray(children).filter((c) => c.type === 'option');
+  const selectedSet = new Set(value);
+  const selectedLabels = options.filter((c) => selectedSet.has(c.props.value)).map((c) => c.props.children);
+
+  function toggle(v) {
+    const next = selectedSet.has(v) ? value.filter((x) => x !== v) : [...value, v];
+    onChange(next);
+  }
+
+  return (
+    <div ref={ref} className={cn('relative', className)}>
+      <button
+        type="button"
+        onClick={() => !disabled && setOpen(!open)}
+        className={cn(
+          'input flex w-full items-center justify-between text-left',
+          disabled && 'cursor-not-allowed opacity-50'
+        )}
+      >
+        <span className={selectedLabels.length ? 'text-zinc-100' : 'text-zinc-500'}>
+          {selectedLabels.length ? `${selectedLabels.length} selected` : placeholder}
+        </span>
+        <svg className={cn('h-4 w-4 text-zinc-400 transition-transform', open && 'rotate-180')} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 8l4 4 4-4" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-white/[0.08] bg-[#0c0c10] py-1 shadow-2xl">
+          {options.map((opt) => {
+            const selected = selectedSet.has(opt.props.value);
+            return (
+              <button
+                key={opt.props.value}
+                type="button"
+                onClick={() => toggle(opt.props.value)}
+                className={cn(
+                  'flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors',
+                  selected ? 'bg-violet-500/15 text-violet-200' : 'text-zinc-300 hover:bg-white/[0.05] hover:text-white'
+                )}
+              >
+                <span>{opt.props.children}</span>
+                {selected && <span className="text-violet-300">✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Section header ───────────────────────────────────────────
 export function SectionHeader({ title, sub, action }) {
   return (
