@@ -277,7 +277,7 @@ export default function Dashboard() {
                 onClick={() => { setTab('shared'); setSearch(''); setVisibleCount(PAGE_SIZE); }}
                 className={cn('rounded-lg px-3 py-1.5 text-xs font-medium transition', tab === 'shared' ? 'bg-violet-500/15 text-violet-200' : 'text-zinc-400 hover:text-zinc-200')}
               >
-                {user?.root_admin ? 'All servers' : 'Shared with me'}
+                {user?.root_admin ? "Others' servers" : 'Shared with me'}
               </button>
             </div>
             {servers.length > 0 && (
@@ -297,8 +297,8 @@ export default function Dashboard() {
         {servers.length === 0 ? (
           <EmptyState
             icon={<Icons.Server className="h-12 w-12 text-zinc-500" />}
-            title={tab === 'mine' ? 'No servers yet' : user?.root_admin ? 'No other servers' : 'No shared servers'}
-            sub={tab === 'mine' ? 'Ask your host to create a server for you.' : user?.root_admin ? 'You own every server on the panel.' : 'You have not been added as a sub-user to any server.'}
+            title={tab === 'mine' ? 'No servers yet' : user?.root_admin ? "No others' servers" : 'No shared servers'}
+            sub={tab === 'mine' ? 'Ask your host to create a server for you.' : user?.root_admin ? 'There are no servers owned by other users.' : 'You have not been added as a sub-user to any server.'}
           />
         ) : filteredServers.length === 0 ? (
           <EmptyState icon={<Icons.Search className="h-12 w-12 text-zinc-500" />} title="No matches" sub={`No servers match "${search}".`} />
