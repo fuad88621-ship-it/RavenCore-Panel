@@ -3,4 +3,5 @@ export const config = {
   agentToken: process.env.AGENT_TOKEN,
   consoleSecret: process.env.CONSOLE_SECRET || process.env.AGENT_TOKEN,
   botDataDir: process.env.BOT_DATA_DIR || '/var/lib/raven/bots',
+  sftpPort: parseInt(process.env.SFTP_PORT || '2022'),
 };

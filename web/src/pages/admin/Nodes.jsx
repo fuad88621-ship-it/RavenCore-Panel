@@ -342,6 +342,8 @@ export default function Nodes() {
     }
   }
 
+  const healthById = Object.fromEntries(health.map((h) => [h.id, h]));
+
   if (selected) return <NodeDetail node={selected} onBack={() => setSelected(null)} />;
 
   return (
@@ -495,6 +497,8 @@ export default function Nodes() {
         {nodes.map((n) => {
           const memPct = n.memory_mb ? Math.min(100, (n.used_memory / n.memory_mb) * 100) : 0;
           const diskPct = n.disk_mb ? Math.min(100, (n.used_disk / n.disk_mb) * 100) : 0;
+          const h = healthById[n.id];
+          const online = h ? h.online : false;
           return (
             <ShineCard key={n.id} className="p-5">
               <div className="mb-3 flex items-center justify-between">
@@ -508,7 +512,13 @@ export default function Nodes() {
                     {n.visibility === 'private' && <Badge tone="amber" className="mt-1">Private node</Badge>}
                   </div>
                 </div>
-                <Badge tone={n.enabled ? 'green' : 'red'} dot={n.enabled ? 'emerald' : 'red'}>{n.enabled ? 'Online' : 'Disabled'}</Badge>
+                {!n.enabled ? (
+                  <Badge tone="red" dot="red">Disabled</Badge>
+                ) : online ? (
+                  <Badge tone="green" dot="emerald">Online</Badge>
+                ) : (
+                  <Badge tone="red" dot="red">Offline</Badge>
+                )}
               </div>
               <div className="space-y-2">
                 <div>

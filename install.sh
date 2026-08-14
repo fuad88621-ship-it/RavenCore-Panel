@@ -12,6 +12,7 @@
 # ═══════════════════════════════════════════════════════════════════
 
 set -e
+set -o pipefail
 
 # ── Colors ─────────────────────────────────────────────────────────
 C_RESET='\033[0m'; C_GREEN='\033[32m'; C_CYAN='\033[36m'; C_YELLOW='\033[33m'; C_RED='\033[31m'; C_BOLD='\033[1m'
@@ -60,6 +61,9 @@ read -rp "  Node FQDN / IP (players connect here) [${DETECTED_FQDN}]: " NODE_FQD
 read -rp "  Agent port (default 8080): " AGENT_PORT
 [ -z "$AGENT_PORT" ] && AGENT_PORT=8080
 
+read -rp "  SFTP port (default 2022): " SFTP_PORT
+[ -z "$SFTP_PORT" ] && SFTP_PORT=2022
+
 # Auto-detect resources
 TOTAL_MEM_MB="$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo 2>/dev/null || echo 0)"
 TOTAL_DISK_MB="$(df -B1 / 2>/dev/null | awk 'NR==2 {printf "%d", $2/1024/1024}' || echo 0)"
@@ -79,7 +83,7 @@ info "Registering node \"${NODE_NAME}\" with ${PANEL_URL}…"
 
 # ── Register the node with the panel ──────────────────────────────
 REGISTER_JSON=$(cat <<EOF
-{"name":"${NODE_NAME}","fqdn":"${NODE_FQDN}","port":${AGENT_PORT},"scheme":"http","memory_mb":${NODE_MEM:-0},"disk_mb":${NODE_DISK:-0},"cpu_cores":${NODE_CPU:-0},"file_directory":"${DATA_DIR}"}
+{"name":"${NODE_NAME}","fqdn":"${NODE_FQDN}","port":${AGENT_PORT},"scheme":"http","memory_mb":${NODE_MEM:-0},"disk_mb":${NODE_DISK:-0},"cpu_cores":${NODE_CPU:-0},"file_directory":"${DATA_DIR}","sftp_port":${SFTP_PORT}}
 EOF
 )
 
@@ -148,12 +152,13 @@ services:
     restart: unless-stopped
     ports:
       - "${AGENT_PORT}:8080"
-      - "2022:2022"
+      - "${SFTP_PORT}:${SFTP_PORT}"
     environment:
       NODE_OPTIONS: --max-old-space-size=256
       AGENT_TOKEN: ${DAEMON_TOKEN}
       CONSOLE_SECRET: ${DAEMON_TOKEN}
       BOT_DATA_DIR: ${DATA_DIR}
+      SFTP_PORT: ${SFTP_PORT}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${DATA_DIR}:${DATA_DIR}
@@ -170,14 +175,24 @@ info "Building and starting the agent… (first build takes a few minutes)"
 cd "$AGENT_DIR"
 if ! $COMPOSE up -d --build 2>&1 | tee /tmp/raven-agent-build.log | tail -20; then
   echo ""
-  fail "Agent failed to start. Last build output above — or run: cd /opt/raven-agent && ${COMPOSE} logs agent"
+  fail "Agent build/start failed. Last build output above — or run: cd /opt/raven-agent && ${COMPOSE} logs agent"
+fi
+# Verify the container is actually running (compose can exit 0 even when a
+# container fails to start, e.g. a port is already in use)
+sleep 4
+if ! $COMPOSE ps agent 2>/dev/null | grep -q 'Up'; then
+  echo ""
+  echo -e "${C_RED}  The agent container is not running. Last logs:${C_RESET}"
+  $COMPOSE logs --tail 20 agent 2>&1 || true
+  echo ""
+  fail "Agent failed to start. Common cause: a port is already in use. Check with: ss -tlnp | grep -E ':(8080|2022|9000)\\b'"
 fi
 ok "Agent is running!"
 
 # ── Firewall ─────────────────────────────────────────────────────
 if command -v ufw >/dev/null 2>&1; then
   ufw allow "${AGENT_PORT}/tcp" >/dev/null 2>&1 || true
-  ufw allow 2022/tcp >/dev/null 2>&1 || true
+  ufw allow "${SFTP_PORT}/tcp" >/dev/null 2>&1 || true
   ok "Firewall rules added (agent port + SFTP port)"
 fi
 
@@ -189,6 +204,7 @@ echo ""
 echo -e "  ${C_BOLD}Node:${C_RESET}      ${NODE_NAME}"
 echo -e "  ${C_BOLD}FQDN:${C_RESET}      ${NODE_FQDN}"
 echo -e "  ${C_BOLD}Agent port:${C_RESET} ${AGENT_PORT}"
+echo -e "  ${C_BOLD}SFTP port:${C_RESET}  ${SFTP_PORT}"
 echo -e "  ${C_BOLD}Data dir:${C_RESET}  ${DATA_DIR}"
 echo ""
 echo -e "  Next steps:"

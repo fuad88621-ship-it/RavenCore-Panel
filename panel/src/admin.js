@@ -143,6 +143,20 @@ export async function adminRoutes(fastify) {
     }
     const token = crypto.randomBytes(32).toString('hex');
     const loc = await q1(`SELECT id FROM locations ORDER BY created_at LIMIT 1`);
+    // Idempotent: if a node with this name already exists (e.g. the installer
+    // was re-run), update it and keep the existing daemon token so the agent
+    // on the VPS stays valid.
+    const existing = await q1(`SELECT id, daemon_token FROM nodes WHERE name = $1`, [name]);
+    if (existing) {
+      const node = await q1(
+        `UPDATE nodes SET fqdn = $1, port = $2, scheme = $3, memory_mb = $4, disk_mb = $5,
+         cpu_cores = $6, file_directory = $7, sftp_port = $8, enabled = true, updated_at = now()
+         WHERE id = $9 RETURNING id, uuid, name, fqdn, port, scheme`,
+        [fqdn, port || 8080, scheme || 'http', memory_mb || 0, disk_mb || 0, cpu_cores || 0,
+         file_directory || '/var/lib/raven/bots', sftp_port || 2022, existing.id]
+      );
+      return reply.code(200).send({ node, daemon_token: existing.daemon_token, updated: true });
+    }
     try {
       const node = await q1(
         `INSERT INTO nodes (uuid, name, description, location_id, fqdn, port, scheme, visibility, behind_proxy, file_directory, sftp_port, memory_mb, disk_mb, cpu_cores, daemon_token)

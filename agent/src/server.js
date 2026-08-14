@@ -428,6 +428,6 @@ const sftpServer = new SSHServer({ hostKeys: [hostKey] }, (client) => {
   client.on('error', () => {});
 });
 
-sftpServer.listen(2022, '0.0.0.0', () => {
-  console.log('[agent] sftp listening on :2022');
+sftpServer.listen(config.sftpPort, '0.0.0.0', () => {
+  console.log(`[agent] sftp listening on :${config.sftpPort}`);
 });
