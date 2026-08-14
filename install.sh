@@ -14,6 +14,16 @@
 set -e
 set -o pipefail
 
+# ── Self-materialize: if run via `bash <(curl ...)`, save to a real file and
+# re-exec from it. Reading from the one-shot /dev/fd/<n> pipe can glitch (it
+# can't be re-read), which caused 'command not found' errors for some users.
+if [[ "$0" == /dev/fd/* ]] || [[ "$0" == /proc/self/fd/* ]]; then
+  SELF_URL="https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh"
+  TMP="$(mktemp /tmp/raven-install.XXXXXX.sh)"
+  curl -fsSL "$SELF_URL" -o "$TMP" || { echo "Could not re-download installer"; exit 1; }
+  exec bash "$TMP" "$@"
+fi
+
 # ── Colors + helpers (defined FIRST so every part of the script can use them) ──
 C_RESET='\033[0m'; C_GREEN='\033[32m'; C_CYAN='\033[36m'; C_YELLOW='\033[33m'; C_RED='\033[31m'; C_BOLD='\033[1m'
 
