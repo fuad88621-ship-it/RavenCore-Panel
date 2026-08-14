@@ -30,23 +30,34 @@ function formatMemory(mb) {
   return `${Math.round(mb)} MiB`;
 }
 
-function StatCard({ icon, label, value, sub, bar }) {
+function StatCard({ icon, label, value, sub, bar, index }) {
+  const hasBar = typeof bar === 'number' && bar > 0;
+  const pct = hasBar ? Math.min(100, bar) : 0;
   return (
-    <Card className="flex items-center gap-3 p-4">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-zinc-300">
-        {icon}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-xs text-zinc-500">{label}</p>
-        <p className="truncate font-medium text-white">{value}</p>
-        {sub && <p className="text-xs text-zinc-500">{sub}</p>}
-        {bar && (
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full bg-violet-500" style={{ width: `${Math.min(100, bar)}%` }} />
+    <motion.div
+      initial={{ opacity: 0, x: 16 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.35, delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <Card className="flex h-[88px] items-center gap-3 p-4">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-zinc-300">
+          {icon}
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col justify-center">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{label}</p>
+          <div className="flex items-baseline gap-1.5">
+            <p className="truncate text-base font-semibold text-white">{value}</p>
+            {sub && <p className="truncate text-xs text-zinc-500">{sub}</p>}
           </div>
-        )}
-      </div>
-    </Card>
+          <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/10">
+            <div
+              className="h-full rounded-full bg-violet-500 transition-all duration-500"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+      </Card>
+    </motion.div>
   );
 }
 
@@ -1029,10 +1040,13 @@ export default function ServerDetail() {
 
   useEffect(() => {
     if (!server) return;
-    const t = setInterval(() => {
-      api.resources(server.id).then(setResources).catch(() => {});
-    }, 3000);
-    return () => clearInterval(t);
+    let mounted = true;
+    function load() {
+      api.resources(server.id).then((d) => { if (mounted) setResources(d); }).catch(() => {});
+    }
+    load();
+    const t = setInterval(load, 2000);
+    return () => { mounted = false; clearInterval(t); };
   }, [server?.id]);
 
   if (error) return <ErrorState title="Failed to load server" sub={error} onRetry={() => window.location.reload()} />;
@@ -1078,12 +1092,16 @@ export default function ServerDetail() {
     ? `${server.allocation_ip || '0.0.0.0'}:${server.allocation_port}`
     : server.node_fqdn;
 
+  const memLimitMb = resources?.memory_limit_mb || server.memory_mb || 1;
+  const diskLimitMb = resources?.disk_limit_mb || server.disk_mb || 1;
+  const isOffline = server.status !== 'running';
+
   const statCards = resources ? [
     { icon: <Icons.Node className="h-5 w-5" />, label: 'Address', value: address, sub: server.node_fqdn },
-    { icon: <Icons.Clock className="h-5 w-5" />, label: 'Uptime', value: formatUptime(resources.uptime_seconds) },
+    { icon: <Icons.Clock className="h-5 w-5" />, label: 'Uptime', value: isOffline ? 'Offline' : formatUptime(resources.uptime_seconds) },
     { icon: <Icons.Cpu className="h-5 w-5" />, label: 'CPU Load', value: `${resources.cpu}%`, sub: `/ ${server.cpu}%`, bar: (resources.cpu / server.cpu) * 100 },
-    { icon: <Icons.Ram className="h-5 w-5" />, label: 'Memory', value: formatMemory(resources.memory_mb), sub: `/ ${formatMemory(resources.memory_limit_mb)}`, bar: resources.memory_limit_mb ? (resources.memory_mb / resources.memory_limit_mb) * 100 : 0 },
-    { icon: <Icons.Disk className="h-5 w-5" />, label: 'Disk', value: formatMemory(resources.disk_mb), sub: resources.disk_limit_mb ? `/ ${formatMemory(resources.disk_limit_mb)}` : '', bar: resources.disk_limit_mb ? (resources.disk_mb / resources.disk_limit_mb) * 100 : 0 },
+    { icon: <Icons.Ram className="h-5 w-5" />, label: 'Memory', value: formatMemory(resources.memory_mb), sub: `/ ${formatMemory(memLimitMb)}`, bar: (resources.memory_mb / memLimitMb) * 100 },
+    { icon: <Icons.Disk className="h-5 w-5" />, label: 'Disk', value: formatMemory(resources.disk_mb), sub: `/ ${formatMemory(diskLimitMb)}`, bar: (resources.disk_mb / diskLimitMb) * 100 },
     { icon: <Icons.CloudDown className="h-5 w-5" />, label: 'Network (In)', value: `${resources.network_rx_mb} MiB` },
     { icon: <Icons.CloudUp className="h-5 w-5" />, label: 'Network (Out)', value: `${resources.network_tx_mb} MiB` },
   ] : [];
@@ -1141,8 +1159,20 @@ export default function ServerDetail() {
             <ConsoleTab server={server} />
           </div>
           <div className="space-y-3">
-            {!resources && <p className="text-sm text-zinc-500">Loading stats…</p>}
-            {statCards.map((s) => <StatCard key={s.label} {...s} />)}
+            {!resources && (
+              <div className="space-y-3">
+                {[...Array(7)].map((_, i) => (
+                  <Card key={i} className="flex h-[88px] items-center gap-3 p-4">
+                    <Skeleton className="h-10 w-10 rounded-lg" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-3 w-20" />
+                      <Skeleton className="h-4 w-28" />
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+            {statCards.map((s, i) => <StatCard key={s.label} {...s} index={i} />)}
           </div>
         </div>
       ) : (

@@ -281,10 +281,12 @@ export async function getResources(uuid) {
     // ignore disk errors
   }
 
-  // Uptime from container StartedAt
+  // Uptime from container StartedAt (only when running; offline containers often report Go zero time)
   try {
-    const started = info.State.StartedAt ? new Date(info.State.StartedAt) : null;
-    if (started) uptimeSeconds = Math.floor((Date.now() - started.getTime()) / 1000);
+    const started = running && info.State.StartedAt ? new Date(info.State.StartedAt) : null;
+    if (started && started.getFullYear() > 1) {
+      uptimeSeconds = Math.floor((Date.now() - started.getTime()) / 1000);
+    }
   } catch {}
 
   // Disk limit from the container's memory-style limit isn't a thing; use spec disk_mb if available
