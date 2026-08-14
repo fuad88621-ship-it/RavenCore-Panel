@@ -390,6 +390,41 @@ export async function renameFile(uuid, relPath, newPath) {
   return { ok: true };
 }
 
+export async function archiveFiles(uuid, relPaths, archiveName) {
+  const root = safeResolve(uuid, '/');
+  const outName = archiveName || `archive-${Date.now()}.tar.gz`;
+  const outPath = path.join(root, outName);
+  const args = ['-czf', outPath, ...relPaths.map((p) => p.replace(/^\/+/, ''))];
+  await exec('tar', args, { cwd: root });
+  return { ok: true, archive: outName };
+}
+
+export async function extractArchive(uuid, relPath) {
+  const target = safeResolve(uuid, relPath);
+  const root = safeResolve(uuid, '/');
+  const lower = target.toLowerCase();
+  if (lower.endsWith('.zip')) {
+    await exec('unzip', ['-o', target, '-d', root], { cwd: root });
+  } else if (lower.endsWith('.tar.gz') || lower.endsWith('.tgz')) {
+    await exec('tar', ['-xzf', target], { cwd: root });
+  } else if (lower.endsWith('.tar')) {
+    await exec('tar', ['-xf', target], { cwd: root });
+  } else {
+    throw new Error('Unsupported archive format');
+  }
+  return { ok: true };
+}
+
+export async function createFolder(uuid, relPath) {
+  const target = safeResolve(uuid, relPath);
+  await fs.mkdir(target, { recursive: true });
+  return { ok: true };
+}
+
+export function downloadFilePath(uuid, relPath) {
+  return safeResolve(uuid, relPath);
+}
+
 // ---- Console attach ----
 
 export async function getInstallLog(uuid) {

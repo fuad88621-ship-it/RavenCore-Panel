@@ -105,6 +105,39 @@ app.post('/servers/:uuid/files/rename', async (req, res) => {
   }
 });
 
+app.post('/servers/:uuid/files/archive', async (req, res) => {
+  try {
+    res.json(await docker.archiveFiles(req.params.uuid, req.body.paths, req.body.archiveName));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/servers/:uuid/files/extract', async (req, res) => {
+  try {
+    res.json(await docker.extractArchive(req.params.uuid, req.body.path));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/servers/:uuid/files/mkdir', async (req, res) => {
+  try {
+    res.json(await docker.createFolder(req.params.uuid, req.body.path));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/servers/:uuid/files/download', async (req, res) => {
+  try {
+    const target = docker.downloadFilePath(req.params.uuid, req.query.path);
+    res.download(target);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Update spec (env vars, startup command, limits) and rebuild the container
 // so changes actually apply.
 app.patch('/servers/:uuid/spec', async (req, res) => {

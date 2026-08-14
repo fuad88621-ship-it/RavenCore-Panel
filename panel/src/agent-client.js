@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { config, agentInternalUrl } from './config.js';
 
-export async function agentRequest(path, method = 'GET', body) {
+export async function agentRequest(path, method = 'GET', body, opts = {}) {
   const res = await fetch(`${agentInternalUrl}${path}`, {
     method,
     headers: {
@@ -10,6 +10,10 @@ export async function agentRequest(path, method = 'GET', body) {
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+  if (opts.raw) {
+    if (!res.ok) throw new Error(`Agent error (${res.status})`);
+    return { body: res.body, headers: Object.fromEntries(res.headers.entries()) };
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Agent error (${res.status})`);
   return data;

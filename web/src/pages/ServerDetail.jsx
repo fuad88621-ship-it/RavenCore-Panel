@@ -193,7 +193,12 @@ function FilesTab({ server }) {
   const [content, setContent] = useState('');
   const [renaming, setRenaming] = useState(null);
   const [renameValue, setRenameValue] = useState('');
+  const [selected, setSelected] = useState(new Set());
+  const [newFolder, setNewFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [contextMenu, setContextMenu] = useState(null);
   const [error, setError] = useState('');
+  const menuRef = useRef(null);
 
   async function load(p) {
     try {
@@ -268,6 +273,85 @@ function FilesTab({ server }) {
     }
   }
 
+  function toggleSelect(f, e) {
+    e.stopPropagation();
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(f.name)) next.delete(f.name);
+      else next.add(f.name);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    if (selected.size === files.length) setSelected(new Set());
+    else setSelected(new Set(files.map((f) => f.name)));
+  }
+
+  async function createFolder(e) {
+    e.preventDefault();
+    if (!newFolderName.trim()) return;
+    try {
+      await api.createFolder(server.id, join(path, newFolderName.trim()));
+      setNewFolder(false);
+      setNewFolderName('');
+      load(path);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function archiveSelected() {
+    if (selected.size === 0) return;
+    const name = prompt('Archive name (e.g. backup.tar.gz):', 'archive.tar.gz');
+    if (!name) return;
+    try {
+      await api.archiveFiles(server.id, Array.from(selected).map((n) => join(path, n)), name);
+      setSelected(new Set());
+      load(path);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function extract(f) {
+    try {
+      await api.extractArchive(server.id, join(path, f.name));
+      load(path);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function download(f) {
+    const url = api.downloadFile(server.id, join(path, f.name));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = f.name;
+    a.click();
+  }
+
+  function isArchive(name) {
+    const lower = name.toLowerCase();
+    return lower.endsWith('.zip') || lower.endsWith('.tar.gz') || lower.endsWith('.tgz') || lower.endsWith('.tar');
+  }
+
+  function openContextMenu(f, e) {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, file: f });
+  }
+
+  function closeContextMenu() {
+    setContextMenu(null);
+  }
+
+  useEffect(() => {
+    function onClick(e) { if (menuRef.current && !menuRef.current.contains(e.target)) closeContextMenu(); }
+    if (contextMenu) document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [contextMenu]);
+
   const crumbs = path === '/' ? [''] : path.split('/').filter(Boolean);
 
   return (
@@ -303,11 +387,48 @@ function FilesTab({ server }) {
                 );
               })}
             </nav>
-            <label className="btn-primary !px-3 !py-1.5 cursor-pointer text-xs">
-              <Icons.Upload className="h-3.5 w-3.5" /> Upload file
-              <input type="file" className="hidden" onChange={upload} />
-            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <button className="btn-ghost !px-3 !py-1.5 text-xs" onClick={() => setNewFolder(true)}><Icons.Plus className="h-3.5 w-3.5" /> New folder</button>
+              <label className="btn-primary !px-3 !py-1.5 cursor-pointer text-xs">
+                <Icons.Upload className="h-3.5 w-3.5" /> Upload
+                <input type="file" className="hidden" onChange={upload} />
+              </label>
+            </div>
           </div>
+
+          {newFolder && (
+            <form onSubmit={createFolder} className="mb-4 flex max-w-sm gap-2">
+              <input
+                autoFocus
+                className="input text-sm"
+                placeholder="Folder name"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') setNewFolder(false); }}
+              />
+              <button className="btn-primary !px-3 text-xs" type="submit">Create</button>
+              <button type="button" className="btn-ghost !px-3 text-xs" onClick={() => setNewFolder(false)}>Cancel</button>
+            </form>
+          )}
+
+          {files.length > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <button className="text-xs text-zinc-400 hover:text-white" onClick={selectAll}>
+                {selected.size === files.length ? 'Deselect all' : 'Select all'}
+              </button>
+              {selected.size > 0 && (
+                <>
+                  <span className="text-xs text-zinc-600">|</span>
+                  <button className="text-xs text-violet-300 hover:text-violet-200" onClick={archiveSelected}>
+                    Archive {selected.size} item{selected.size > 1 ? 's' : ''}
+                  </button>
+                  <button className="text-xs text-zinc-400 hover:text-white" onClick={() => setSelected(new Set())}>
+                    Clear
+                  </button>
+                </>
+              )}
+            </div>
+          )}
 
           <Card className="!p-0 overflow-hidden">
             {files.length === 0 ? (
@@ -323,8 +444,20 @@ function FilesTab({ server }) {
                     initial={{ opacity: 0, scale: 0.96 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ duration: 0.2, delay: i * 0.03 }}
-                    className="group relative bg-[#0c0c10] p-4 transition-colors hover:bg-white/[0.03]"
+                    className={cn(
+                      'group relative bg-[#0c0c10] p-4 transition-colors hover:bg-white/[0.03]',
+                      selected.has(f.name) && 'bg-violet-500/10 ring-1 ring-violet-500/30'
+                    )}
+                    onContextMenu={(e) => openContextMenu(f, e)}
                   >
+                    <div className="absolute left-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(f.name)}
+                        onChange={(e) => toggleSelect(f, e)}
+                        className="h-3.5 w-3.5 rounded border-white/20 bg-white/10 text-violet-500 focus:ring-violet-500/40"
+                      />
+                    </div>
                     <button onClick={() => openFile(f)} className="flex w-full flex-col items-center gap-3 text-center">
                       <FileIcon type={f.type} name={f.name} />
                       {renaming === f.name ? (
@@ -344,27 +477,42 @@ function FilesTab({ server }) {
                         </>
                       )}
                     </button>
-                    <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      <button
-                        className="rounded-md border border-white/[0.08] bg-[#0c0c10] p-1 text-zinc-400 hover:text-white"
-                        onClick={(e) => { e.stopPropagation(); setRenaming(f.name); setRenameValue(f.name); }}
-                        title="Rename"
-                      >
-                        <Icons.Gear className="h-3 w-3" />
-                      </button>
-                      <button
-                        className="rounded-md border border-white/[0.08] bg-[#0c0c10] p-1 text-zinc-400 hover:text-red-400"
-                        onClick={(e) => { e.stopPropagation(); remove(f); }}
-                        title="Delete"
-                      >
-                        <Icons.Trash className="h-3 w-3" />
-                      </button>
-                    </div>
+                    <button
+                      className="absolute right-2 top-2 rounded-md border border-white/[0.08] bg-[#0c0c10] p-1 text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100 hover:text-white"
+                      onClick={(e) => openContextMenu(f, e)}
+                      title="Actions"
+                    >
+                      <Icons.Gear className="h-3 w-3" />
+                    </button>
                   </motion.div>
                 ))}
               </div>
             )}
           </Card>
+
+          {contextMenu && (
+            <div
+              ref={menuRef}
+              className="fixed z-50 w-44 overflow-hidden rounded-xl border border-white/[0.08] bg-[#0c0c10] shadow-2xl"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+            >
+              <div className="px-3 py-2 text-xs font-medium text-zinc-300 border-b border-white/[0.06]">{contextMenu.file.name}</div>
+              <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-300 hover:bg-white/[0.05]" onClick={() => { setRenaming(contextMenu.file.name); setRenameValue(contextMenu.file.name); closeContextMenu(); }}>
+                <Icons.Gear className="h-3.5 w-3.5" /> Rename
+              </button>
+              <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-300 hover:bg-white/[0.05]" onClick={() => { download(contextMenu.file); closeContextMenu(); }}>
+                <Icons.Download className="h-3.5 w-3.5" /> Download
+              </button>
+              {contextMenu.file.type === 'file' && isArchive(contextMenu.file.name) && (
+                <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-300 hover:bg-white/[0.05]" onClick={() => { extract(contextMenu.file); closeContextMenu(); }}>
+                  <Icons.Folder className="h-3.5 w-3.5" /> Extract
+                </button>
+              )}
+              <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-400 hover:bg-white/[0.05]" onClick={() => { remove(contextMenu.file); closeContextMenu(); }}>
+                <Icons.Trash className="h-3.5 w-3.5" /> Delete
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

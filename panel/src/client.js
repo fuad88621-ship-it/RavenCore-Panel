@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { q, q1 } from './db.js';
 import { requireAuth } from './auth.js';
 import { agentRequest, consoleToken } from './agent-client.js';
@@ -149,6 +150,33 @@ export async function clientRoutes(fastify) {
     const server = await getServerForUser(req, reply);
     if (!server) return;
     return agentRequest(`/servers/${server.uuid}/files/rename`, 'POST', req.body);
+  });
+
+  fastify.post('/api/client/servers/:id/files/archive', { preHandler: requireAuth }, async (req, reply) => {
+    const server = await getServerForUser(req, reply);
+    if (!server) return;
+    return agentRequest(`/servers/${server.uuid}/files/archive`, 'POST', req.body);
+  });
+
+  fastify.post('/api/client/servers/:id/files/extract', { preHandler: requireAuth }, async (req, reply) => {
+    const server = await getServerForUser(req, reply);
+    if (!server) return;
+    return agentRequest(`/servers/${server.uuid}/files/extract`, 'POST', req.body);
+  });
+
+  fastify.post('/api/client/servers/:id/files/mkdir', { preHandler: requireAuth }, async (req, reply) => {
+    const server = await getServerForUser(req, reply);
+    if (!server) return;
+    return agentRequest(`/servers/${server.uuid}/files/mkdir`, 'POST', req.body);
+  });
+
+  fastify.get('/api/client/servers/:id/files/download', { preHandler: requireAuth }, async (req, reply) => {
+    const server = await getServerForUser(req, reply);
+    if (!server) return;
+    const agentRes = await agentRequest(`/servers/${server.uuid}/files/download?path=${encodeURIComponent(req.query.path)}`, 'GET', null, { raw: true });
+    reply.header('Content-Disposition', agentRes.headers['content-disposition'] || `attachment; filename="${path.basename(req.query.path)}"`);
+    reply.type(agentRes.headers['content-type'] || 'application/octet-stream');
+    return agentRes.body;
   });
 
   // Resources

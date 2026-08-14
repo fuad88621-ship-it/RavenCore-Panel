@@ -720,6 +720,11 @@ export const Icons = {
       <path d="M12 16V4M7 9l5-5 5 5" /><path d="M4 20h16" />
     </svg>
   ),
+  Download: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <path d="M12 4v12M7 13l5 5 5-5" /><path d="M4 20h16" />
+    </svg>
+  ),
   Trash: (p) => (
     <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
       <path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14" />
