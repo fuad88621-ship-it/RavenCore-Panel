@@ -40,6 +40,16 @@ update_agent() {
   if [ ! -f "$AGENT_DIR/docker-compose.yml" ]; then
     fail "No existing agent found at ${AGENT_DIR}. Run the installer normally first."
   fi
+  # Safety: make sure this is a NODE compose, not the PANEL stack. An old
+  # buggy update once overwrote node composes with the panel's (caddy/
+  # postgres/redis/mariadb/panel), which would start the whole panel on the
+  # node and cause confusing errors on every update.
+  if grep -qE "^  (caddy|postgres|redis|mariadb|panel):" "$AGENT_DIR/docker-compose.yml"; then
+    fail "This node's compose is the PANEL stack, not an agent (corrupted by an old update). Fix it: run the installer and pick Reinstall."
+  fi
+  if ! grep -q "^  agent:" "$AGENT_DIR/docker-compose.yml"; then
+    fail "No agent service found in $AGENT_DIR/docker-compose.yml. Run the installer fresh."
+  fi
   info "Updating the RavenCore agent…"
   TARBALL="$(mktemp)"
   curl -fsSL --max-time 120 -o "$TARBALL" "$REPO_TARBALL" \
@@ -49,12 +59,26 @@ update_agent() {
   # docker-compose.yml which would overwrite this node's agent compose.
   TMPDIR="$(mktemp -d)"
   tar -xzf "$TARBALL" -C "$TMPDIR" --strip-components=1 2>/dev/null \
-    || fail "Could not extract the agent source."
-  rm -f "$AGENT_DIR/agent/Dockerfile"
-  rm -rf "$AGENT_DIR/agent/src"
-  cp -r "$TMPDIR/agent/Dockerfile" "$TMPDIR/agent/package.json" "$TMPDIR/agent/package-lock.json" "$TMPDIR/agent/src" "$AGENT_DIR/agent/" 2>/dev/null \
-    || cp -r "$TMPDIR/agent/." "$AGENT_DIR/agent/"
+    || { rm -rf "$TMPDIR" "$TARBALL"; fail "Could not extract the agent source."; }
+  if [ ! -f "$TMPDIR/agent/Dockerfile" ] || [ ! -d "$TMPDIR/agent/src" ]; then
+    rm -rf "$TMPDIR" "$TARBALL"
+    fail "Downloaded source has no agent/ directory. Aborting."
+  fi
+  # Atomic swap: copy the new agent/ to agent.new, then replace the old dir.
+  # Never delete the old files before the new ones are in place, and never
+  # leave stale files behind — the whole dir is replaced. (The old code
+  # deleted Dockerfile/src first, then copied a file list that included a
+  # non-existent package-lock.json, so the copy could fail silently and the
+  # node was left half-updated.)
+  rm -rf "$AGENT_DIR/agent.new"
+  cp -a "$TMPDIR/agent" "$AGENT_DIR/agent.new" \
+    || { rm -rf "$TMPDIR" "$TARBALL" "$AGENT_DIR/agent.new"; fail "Could not copy the new agent files."; }
+  rm -rf "$AGENT_DIR/agent"
+  mv "$AGENT_DIR/agent.new" "$AGENT_DIR/agent"
   rm -rf "$TMPDIR" "$TARBALL"
+  if [ ! -f "$AGENT_DIR/agent/Dockerfile" ] || [ ! -d "$AGENT_DIR/agent/src" ]; then
+    fail "Agent files missing after update. Aborting (node is untouched — the old agent still runs)."
+  fi
   COMPOSE="docker compose"
   docker compose version >/dev/null 2>&1 || COMPOSE="docker-compose"
   cd "$AGENT_DIR"
