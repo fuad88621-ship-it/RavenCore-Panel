@@ -195,9 +195,36 @@ function formatBytes(bytes) {
 }
 
 function Modal({ children, onClose }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key === 'Tab') {
+        const el = ref.current;
+        if (!el) return;
+        const focusables = el.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const prevFocus = document.activeElement;
+    const first = ref.current?.querySelector('input, button, select, textarea, [tabindex]:not([tabindex="-1"])');
+    first?.focus();
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+      if (prevFocus && typeof prevFocus.focus === 'function') prevFocus.focus();
+    };
+  }, [onClose]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
-      <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+      <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()} ref={ref}>
         {children}
       </Card>
     </div>
@@ -240,6 +267,7 @@ function fmtDate(iso) {
 }
 
 function parentPath(p) {
+  if (!p || p === '/') return '/';
   const idx = p.lastIndexOf('/');
   return idx <= 0 ? '/' : p.slice(0, idx);
 }
@@ -254,19 +282,8 @@ function FilesTab({ server }) {
   const [modal, setModal] = useState(null); // { type: 'newFile'|'newFolder'|'rename'|'delete', file? }
   const [modalValue, setModalValue] = useState('');
   const [error, setError] = useState('');
-  const [toast, setToast] = useState(null);
   const fileInputRef = useRef(null);
-  const toastTimer = useRef(null);
-
-  useEffect(() => () => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-  }, []);
-
-  function showToast(text, isError = false) {
-    setToast({ text, error: isError });
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 4000);
-  }
+  const toast = useToast();
 
   async function load(p) {
     try {
@@ -317,7 +334,7 @@ function FilesTab({ server }) {
     try {
       await api.deleteFile(server.id, join(path, f.name));
       setModal(null);
-      showToast(`Deleted ${f.name}`);
+      toast.push(`Deleted ${f.name}`);
       load(path);
     } catch (e) {
       setError(e.message);
@@ -336,7 +353,7 @@ function FilesTab({ server }) {
     try {
       await api.renameFile(server.id, join(path, f.name), join(path, modalValue));
       setModal(null);
-      showToast('Renamed');
+      toast.push('Renamed');
       load(path);
     } catch (e) {
       setError(e.message);
@@ -357,7 +374,7 @@ function FilesTab({ server }) {
       const base64 = dataUrl.split(',')[1];
       try {
         await api.writeFile(server.id, join(path, file.name), base64, 'base64');
-        showToast(`Uploaded ${file.name}`);
+        toast.push(`Uploaded ${file.name}`);
         load(path);
       } catch (err) {
         setError(err.message);
@@ -391,7 +408,7 @@ function FilesTab({ server }) {
       await api.createFolder(server.id, join(path, modalValue.trim()));
       setModal(null);
       setModalValue('');
-      showToast('Folder created');
+      toast.push('Folder created');
       load(path);
     } catch (err) {
       setError(err.message);
@@ -409,7 +426,7 @@ function FilesTab({ server }) {
       await api.writeFile(server.id, p, '');
       setModal(null);
       setModalValue('');
-      showToast('File created');
+      toast.push('File created');
       load(path);
       setEditing(modalValue.trim());
       setContent('');
@@ -425,7 +442,7 @@ function FilesTab({ server }) {
     try {
       await api.archiveFiles(server.id, Array.from(selected).map((n) => join(path, n)), name);
       setSelected(new Set());
-      showToast(`Archived ${selected.size} item(s)`);
+      toast.push(`Archived ${selected.size} item(s)`);
       load(path);
     } catch (err) {
       setError(err.message);
@@ -435,7 +452,7 @@ function FilesTab({ server }) {
   async function compress(f) {
     try {
       await api.archiveFiles(server.id, [join(path, f.name)], `${f.name}.tar.gz`);
-      showToast('Archived');
+      toast.push('Archived');
       load(path);
     } catch (err) {
       setError(err.message);
@@ -445,7 +462,7 @@ function FilesTab({ server }) {
   async function extract(f) {
     try {
       await api.extractArchive(server.id, join(path, f.name));
-      showToast(`Extracted ${f.name}`);
+      toast.push(`Extracted ${f.name}`);
       load(path);
     } catch (err) {
       setError(err.message);
@@ -468,7 +485,7 @@ function FilesTab({ server }) {
       if (failed.length > 0) {
         setError(`Failed to delete ${failed.length} item(s)`);
       } else {
-        showToast(`Deleted ${names.length} item(s)`);
+        toast.push(`Deleted ${names.length} item(s)`);
       }
       setSelected(new Set());
       setModal(null);
@@ -508,21 +525,6 @@ function FilesTab({ server }) {
         </motion.div>
       ) : (
         <>
-          {/* Toast */}
-          {toast && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className={cn(
-                'rounded-xl border px-4 py-2.5 text-sm',
-                toast.error ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-              )}
-            >
-              {toast.text}
-            </motion.div>
-          )}
-
           {/* Toolbar */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <Card className="!py-2 !px-3">
@@ -594,6 +596,7 @@ function FilesTab({ server }) {
                   <div className="grid grid-cols-[40px_1fr_100px_170px_150px] items-center gap-2 border-b border-white/[0.06] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
                     <input
                       type="checkbox"
+                      aria-label="Select all files"
                       checked={files.length > 0 && selected.size === files.length}
                       ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < files.length; }}
                       onChange={selectAll}
@@ -626,6 +629,7 @@ function FilesTab({ server }) {
                         <li key={f.name} className={cn('grid grid-cols-[40px_1fr_100px_170px_150px] items-center gap-2 px-4 py-2.5 transition hover:bg-white/[0.03]', isSelected && 'bg-violet-500/[0.08]')}>
                           <input
                             type="checkbox"
+                            aria-label={`Select ${f.name}`}
                             checked={isSelected}
                             onChange={() => toggleSelect(f.name)}
                             className="h-3.5 w-3.5 rounded border-white/20 bg-white/10 text-violet-500"
@@ -850,7 +854,7 @@ function DatabasesTab({ server }) {
               <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-white/[0.03] p-3 font-mono text-xs sm:grid-cols-2">
                 <p><span className="text-zinc-500">Database:</span> <span className="text-zinc-200">{db.database_name}</span></p>
                 <p><span className="text-zinc-500">Username:</span> <span className="text-zinc-200">{db.username}</span></p>
-                <p><span className="text-zinc-500">Password:</span> <span className="text-zinc-200">{db.password}</span></p>
+                <p className="flex items-center gap-2"><span className="text-zinc-500">Password:</span> <span className="text-zinc-200">{db.password}</span><button className="text-zinc-500 transition hover:text-violet-300" onClick={() => navigator.clipboard.writeText(db.password)} aria-label={`Copy password for ${db.database_name}`}><Icons.Copy className="h-3.5 w-3.5" /></button></p>
                 <p><span className="text-zinc-500">Host:</span> <span className="text-zinc-200">{db.host}:{db.port || 3306}</span></p>
               </div>
             )}
@@ -1224,9 +1228,9 @@ function UsersTab({ server }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/[0.06] text-left text-xs uppercase tracking-wider text-zinc-500">
-              <th className="px-4 py-3">User</th>
-              <th className="px-4 py-3">Permissions</th>
-              <th className="px-4 py-3 text-right">Actions</th>
+              <th scope="col" className="px-4 py-3">User</th>
+              <th scope="col" className="px-4 py-3">Permissions</th>
+              <th scope="col" className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -1316,14 +1320,15 @@ function BackupsTab({ server }) {
       {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
 
       <Card className="!p-0 overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/[0.06] text-left text-xs uppercase tracking-wider text-zinc-500">
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Size</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Created</th>
-              <th className="px-4 py-3 text-right">Actions</th>
+              <th scope="col" className="px-4 py-3">Name</th>
+              <th scope="col" className="px-4 py-3">Size</th>
+              <th scope="col" className="px-4 py-3">Status</th>
+              <th scope="col" className="px-4 py-3">Created</th>
+              <th scope="col" className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -1347,6 +1352,7 @@ function BackupsTab({ server }) {
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
     </div>
   );
@@ -1380,7 +1386,7 @@ function ActivityTab({ server }) {
           <div className="divide-y divide-white/[0.06]">
             {logs.map((l) => (
               <div key={l.id} className="flex items-center gap-3 px-4 py-3">
-                <span className="text-lg">{actionIcons[l.action] || '•'}</span>
+                <span className="text-lg" aria-hidden="true">{actionIcons[l.action] || '•'}</span>
                 <div className="flex-1">
                   <p className="text-sm text-white">{actionLabels[l.action] || l.action}</p>
                   {l.metadata && Object.keys(l.metadata).length > 0 && (
@@ -1403,6 +1409,7 @@ function ActivityTab({ server }) {
 function NetworkTab({ server }) {
   const [allocations, setAllocations] = useState([]);
   const [sftp, setSftp] = useState(null);
+  const [showSftpPassword, setShowSftpPassword] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -1426,12 +1433,13 @@ function NetworkTab({ server }) {
       <div>
         <h3 className="mb-3 font-semibold text-white">Allocations</h3>
         <Card className="!p-0 overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-white/[0.06] text-left text-xs uppercase tracking-wider text-zinc-500">
-                <th className="px-4 py-3">IP</th>
-                <th className="px-4 py-3">Port</th>
-                <th className="px-4 py-3">Node</th>
+                <th scope="col" className="px-4 py-3">IP</th>
+                <th scope="col" className="px-4 py-3">Port</th>
+                <th scope="col" className="px-4 py-3">Node</th>
               </tr>
             </thead>
             <tbody>
@@ -1445,6 +1453,7 @@ function NetworkTab({ server }) {
               ))}
             </tbody>
           </table>
+          </div>
         </Card>
       </div>
 
@@ -1458,8 +1467,9 @@ function NetworkTab({ server }) {
               <div><label className="label">Username</label><input className="input font-mono" value={sftp.username} readOnly /></div>
               <div><label className="label">Password</label>
                 <div className="flex gap-2">
-                  <input className="input font-mono" value={sftp.password} readOnly />
-                  <button className="btn-ghost !px-3" onClick={() => navigator.clipboard.writeText(sftp.password)} title="Copy"><Icons.Copy className="h-4 w-4" /></button>
+                  <input className="input font-mono" type={showSftpPassword ? 'text' : 'password'} value={sftp.password} readOnly />
+                  <button className="btn-ghost !px-3" onClick={() => setShowSftpPassword((v) => !v)} title={showSftpPassword ? 'Hide password' : 'Show password'} aria-label={showSftpPassword ? 'Hide password' : 'Show password'} aria-pressed={showSftpPassword}><Icons.EyeOff className="h-4 w-4" /></button>
+                  <button className="btn-ghost !px-3" onClick={() => navigator.clipboard.writeText(sftp.password)} title="Copy" aria-label="Copy password"><Icons.Copy className="h-4 w-4" /></button>
                 </div>
               </div>
             </div>
@@ -1467,7 +1477,11 @@ function NetworkTab({ server }) {
             <button className="btn-ghost !py-1.5 text-xs" onClick={rotateSftp}>Rotate password</button>
           </Card>
         ) : (
-          <p className="text-sm text-zinc-500">Loading…</p>
+          <Card className="space-y-3">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-4 w-56" />
+            <Skeleton className="h-4 w-48" />
+          </Card>
         )}
       </div>
     </div>
@@ -1519,10 +1533,21 @@ export default function ServerDetail() {
       <div>
         <Skeleton className="mb-2 h-8 w-48" />
         <Skeleton className="mb-6 h-4 w-64" />
-        <div className="mb-4 flex gap-2">
-          <Skeleton className="h-10 w-24" />
-          <Skeleton className="h-10 w-24" />
-          <Skeleton className="h-10 w-24" />
+        <div className="mb-4 flex flex-wrap gap-2">
+          <Skeleton className="h-11 w-24" />
+          <Skeleton className="h-11 w-24" />
+          <Skeleton className="h-11 w-24" />
+          <Skeleton className="h-11 w-24" />
+        </div>
+        <div className="mb-4 flex gap-1 overflow-hidden">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-10 w-24 shrink-0" />
+          ))}
+        </div>
+        <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
         </div>
         <Skeleton className="h-96 w-full" />
       </div>
@@ -1580,9 +1605,9 @@ export default function ServerDetail() {
         <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/5 ring-1 ring-white/10">
           <Icons.Server className="h-5 w-5 text-violet-300" />
         </span>
-        <div>
+        <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-2xl font-bold text-white">
-            {server.name}
+            <span className="truncate">{server.name}</span>
             <StatusBadge status={server.status} />
           </h1>
           <p className="text-xs text-zinc-500">
@@ -1591,14 +1616,14 @@ export default function ServerDetail() {
         </div>
       </div>
 
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         {server.status === 'running' ? (
-          <button className="btn-ghost" onClick={() => power('stop')}><Icons.Stop className="h-4 w-4" /> Stop</button>
+          <button className="btn-ghost min-h-[44px]" onClick={() => power('stop')}><Icons.Stop className="h-4 w-4" /> Stop</button>
         ) : (
-          <button className="btn-primary" onClick={() => power('start')} disabled={server.status === 'installing'}><Icons.Play className="h-4 w-4" /> Start</button>
+          <button className="btn-primary min-h-[44px]" onClick={() => power('start')} disabled={server.status === 'installing'}><Icons.Play className="h-4 w-4" /> Start</button>
         )}
-        <button className="btn-ghost" onClick={() => power('restart')} disabled={server.status === 'installing'}><Icons.Restart className="h-4 w-4" /> Restart</button>
-        <button className="btn-danger" onClick={() => power('kill')}><Icons.Kill className="h-4 w-4" /> Kill</button>
+        <button className="btn-ghost min-h-[44px]" onClick={() => power('restart')} disabled={server.status === 'installing'}><Icons.Restart className="h-4 w-4" /> Restart</button>
+        <button className="btn-danger min-h-[44px]" onClick={() => power('kill')}><Icons.Kill className="h-4 w-4" /> Kill</button>
       </div>
 
       <div className={cn('mb-4 flex gap-1 overflow-x-auto border-b border-white/[0.06]', 'scrollbar-none')}>

@@ -88,13 +88,14 @@ function AllocationsTab({ node }) {
       </div>
 
       <Card className="!p-0 overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/[0.06] text-left text-xs uppercase tracking-wider text-zinc-500">
-              <th className="px-4 py-3">IP</th>
-              <th className="px-4 py-3">Port</th>
-              <th className="px-4 py-3">Server</th>
-              <th className="px-4 py-3 text-right">Actions</th>
+              <th scope="col" className="px-4 py-3">IP</th>
+              <th scope="col" className="px-4 py-3">Port</th>
+              <th scope="col" className="px-4 py-3">Server</th>
+              <th scope="col" className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -113,6 +114,7 @@ function AllocationsTab({ node }) {
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
     </div>
   );
@@ -246,6 +248,24 @@ export default function Nodes() {
   });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [openSections, setOpenSections] = useState({ general: true, connection: true, resources: true, security: true });
+
+  function toggleSection(k) {
+    setOpenSections((s) => ({ ...s, [k]: !s[k] }));
+  }
+
+  function Section({ k, title, children }) {
+    const open = openSections[k];
+    return (
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02]">
+        <button type="button" onClick={() => toggleSection(k)} aria-expanded={open} className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-white transition hover:bg-white/[0.03]">
+          {title}
+          <span className={cn('text-zinc-500 transition-transform', open && 'rotate-180')} aria-hidden="true">▾</span>
+        </button>
+        {open && <div className="grid grid-cols-2 gap-4 px-4 pb-4 sm:grid-cols-3">{children}</div>}
+      </div>
+    );
+  }
 
   async function load() {
     try {
@@ -310,45 +330,51 @@ export default function Nodes() {
       {showForm && (
         <Card className="mb-4 space-y-4">
           <h3 className="font-semibold text-white">New Node</h3>
-          <form onSubmit={create} className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <div><label className="label">Name</label><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></div>
-            <div><label className="label">Description</label><input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
-            <div><label className="label">Location</label>
-              <Select value={form.location_id} onChange={(e) => setForm({ ...form, location_id: e.target.value })}>
-                <option value="">—</option>
-                {locations.map((l) => <option key={l.id} value={l.id}>{l.short}</option>)}
-              </Select>
-            </div>
-            <div><label className="label">FQDN</label><input className="input font-mono" value={form.fqdn} onChange={(e) => setForm({ ...form, fqdn: e.target.value })} placeholder="node.example.com" required /></div>
-            <div><label className="label">Daemon Port</label><NumberInput value={form.port} onChange={(n) => setForm({ ...form, port: n })} /></div>
-            <div><label className="label">SFTP Port</label><NumberInput value={form.sftp_port} onChange={(n) => setForm({ ...form, sftp_port: n })} /></div>
-            <div>
-              <label className="label">Visibility</label>
-              <Select value={form.visibility} onChange={(e) => setForm({ ...form, visibility: e.target.value })}>
-                <option value="public">Public</option>
-                <option value="private">Private</option>
-              </Select>
-            </div>
-            <div>
-              <label className="label">Scheme</label>
-              <Select value={form.scheme} onChange={(e) => setForm({ ...form, scheme: e.target.value })}>
-                <option value="https">HTTPS (SSL)</option>
-                <option value="http">HTTP</option>
-              </Select>
-            </div>
-            <div><label className="label">File Directory</label><input className="input font-mono" value={form.file_directory} onChange={(e) => setForm({ ...form, file_directory: e.target.value })} /></div>
-            <div><label className="label">Total Memory (MiB)</label><NumberInput value={form.memory_mb} onChange={(n) => setForm({ ...form, memory_mb: n })} /></div>
-            <div><label className="label">Memory Over-Allocation %</label><NumberInput value={form.memory_overallocate} onChange={(n) => setForm({ ...form, memory_overallocate: n })} /></div>
-            <div><label className="label">Total Disk (MiB)</label><NumberInput value={form.disk_mb} onChange={(n) => setForm({ ...form, disk_mb: n })} /></div>
-            <div><label className="label">Disk Over-Allocation %</label><NumberInput value={form.disk_overallocate} onChange={(n) => setForm({ ...form, disk_overallocate: n })} /></div>
-            <div><label className="label">CPU Cores</label><NumberInput value={form.cpu_cores} onChange={(n) => setForm({ ...form, cpu_cores: n })} /></div>
-            <div><label className="label">CPU Over-Allocation %</label><NumberInput value={form.cpu_overallocate} onChange={(n) => setForm({ ...form, cpu_overallocate: n })} /></div>
-            <div className="col-span-2">
-              <label className="label">Daemon Token (agent secret)</label>
-              <input className="input font-mono" value={form.daemon_token} onChange={(e) => setForm({ ...form, daemon_token: e.target.value })} placeholder="Leave empty to auto-generate" />
-              <p className="mt-1 text-xs text-zinc-500">If left empty, a secure token is generated automatically. Copy it from the node's settings after creation.</p>
-            </div>
-            <div className="col-span-2 flex gap-2">
+          <form onSubmit={create} className="space-y-3">
+            <Section k="general" title="General">
+              <div><label className="label">Name</label><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></div>
+              <div><label className="label">Description</label><input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+              <div><label className="label">Location</label>
+                <Select value={form.location_id} onChange={(e) => setForm({ ...form, location_id: e.target.value })}>
+                  <option value="">—</option>
+                  {locations.map((l) => <option key={l.id} value={l.id}>{l.short}</option>)}
+                </Select>
+              </div>
+              <div><label className="label">Visibility</label>
+                <Select value={form.visibility} onChange={(e) => setForm({ ...form, visibility: e.target.value })}>
+                  <option value="public">Public</option>
+                  <option value="private">Private</option>
+                </Select>
+              </div>
+              <div><label className="label">File Directory</label><input className="input font-mono" value={form.file_directory} onChange={(e) => setForm({ ...form, file_directory: e.target.value })} /></div>
+            </Section>
+            <Section k="connection" title="Connection">
+              <div><label className="label">FQDN</label><input className="input font-mono" value={form.fqdn} onChange={(e) => setForm({ ...form, fqdn: e.target.value })} placeholder="node.example.com" required /></div>
+              <div><label className="label">Daemon Port</label><NumberInput value={form.port} onChange={(n) => setForm({ ...form, port: n })} /></div>
+              <div><label className="label">SFTP Port</label><NumberInput value={form.sftp_port} onChange={(n) => setForm({ ...form, sftp_port: n })} /></div>
+              <div><label className="label">Scheme</label>
+                <Select value={form.scheme} onChange={(e) => setForm({ ...form, scheme: e.target.value })}>
+                  <option value="https">HTTPS (SSL)</option>
+                  <option value="http">HTTP</option>
+                </Select>
+              </div>
+            </Section>
+            <Section k="resources" title="Resources">
+              <div><label className="label">Total Memory (MiB)</label><NumberInput value={form.memory_mb} onChange={(n) => setForm({ ...form, memory_mb: n })} /></div>
+              <div><label className="label">Memory Over-Allocation %</label><NumberInput value={form.memory_overallocate} onChange={(n) => setForm({ ...form, memory_overallocate: n })} /></div>
+              <div><label className="label">Total Disk (MiB)</label><NumberInput value={form.disk_mb} onChange={(n) => setForm({ ...form, disk_mb: n })} /></div>
+              <div><label className="label">Disk Over-Allocation %</label><NumberInput value={form.disk_overallocate} onChange={(n) => setForm({ ...form, disk_overallocate: n })} /></div>
+              <div><label className="label">CPU Cores</label><NumberInput value={form.cpu_cores} onChange={(n) => setForm({ ...form, cpu_cores: n })} /></div>
+              <div><label className="label">CPU Over-Allocation %</label><NumberInput value={form.cpu_overallocate} onChange={(n) => setForm({ ...form, cpu_overallocate: n })} /></div>
+            </Section>
+            <Section k="security" title="Security">
+              <div className="col-span-2">
+                <label className="label">Daemon Token (agent secret)</label>
+                <input className="input font-mono" value={form.daemon_token} onChange={(e) => setForm({ ...form, daemon_token: e.target.value })} placeholder="Leave empty to auto-generate" />
+                <p className="mt-1 text-xs text-zinc-500">If left empty, a secure token is generated automatically. Copy it from the node's settings after creation.</p>
+              </div>
+            </Section>
+            <div className="flex gap-2">
               <button className="btn-primary" disabled={busy}>{busy ? 'Registering…' : 'Register node'}</button>
               <button type="button" className="btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
             </div>

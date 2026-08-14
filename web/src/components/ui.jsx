@@ -93,9 +93,10 @@ export function AnimatedNumber({ value, decimals = 0, className }) {
 }
 
 // ── Cards ────────────────────────────────────────────────────
-export function Card({ className, children, delay = 0, hover = false, glow = false }) {
+export function Card({ className, children, delay = 0, hover = false, glow = false, ref }) {
   return (
     <motion.div
+      ref={ref}
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay, ease: 'easeOut' }}
@@ -847,6 +848,19 @@ export const Icons = {
       <path d="M18 10h1.5a3.5 3.5 0 1 1-.5 7H18" />
       <path d="M4 14.5A4.5 4.5 0 0 1 8.5 10h.8A7 7 0 1 1 18 16" />
       <path d="M12 20v-7M8 13l4-4 4 4" />
+    </svg>
+  ),
+  Eye: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ),
+  EyeOff: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <path d="M3 3l18 18" />
+      <path d="M10.6 5.1A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-2.9 3.9M6.6 6.6A17.6 17.6 0 0 0 2 12s3.5 7 10 7a10.7 10.7 0 0 0 4.4-.9" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
     </svg>
   ),
 };

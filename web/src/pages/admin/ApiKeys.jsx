@@ -59,7 +59,7 @@ export default function ApiKeys() {
           <p className="mb-2 text-sm font-semibold text-emerald-300">Key created — copy it now, it won't be shown again:</p>
           <div className="flex items-center gap-2">
             <code className="flex-1 rounded-lg bg-black/40 px-3 py-2 font-mono text-sm text-emerald-300 break-all">{newKey}</code>
-            <button className="btn-ghost !px-3 !py-2" onClick={() => { navigator.clipboard.writeText(newKey); }}><Icons.Copy className="h-4 w-4" /></button>
+            <button className="btn-ghost !px-3 !py-2" onClick={() => { navigator.clipboard.writeText(newKey); }} aria-label="Copy API key"><Icons.Copy className="h-4 w-4" /></button>
           </div>
         </Card>
       )}
@@ -94,13 +94,14 @@ export default function ApiKeys() {
       </Card>
 
       <Card className="!p-0 overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/[0.06] text-left text-xs uppercase tracking-wider text-zinc-500">
-              <th className="px-4 py-3">Key</th>
-              <th className="px-4 py-3">Permissions</th>
-              <th className="px-4 py-3">Last used</th>
-              <th className="px-4 py-3 text-right">Actions</th>
+              <th scope="col" className="px-4 py-3">Key</th>
+              <th scope="col" className="px-4 py-3">Permissions</th>
+              <th scope="col" className="px-4 py-3">Last used</th>
+              <th scope="col" className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -121,6 +122,7 @@ export default function ApiKeys() {
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
     </div>
   );

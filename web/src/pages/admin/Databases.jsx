@@ -34,14 +34,15 @@ export default function Databases() {
       {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
 
       <Card className="!p-0 overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/[0.06] text-left text-xs uppercase tracking-wider text-zinc-500">
-              <th className="px-4 py-3">Database</th>
-              <th className="px-4 py-3">Server</th>
-              <th className="px-4 py-3">Owner</th>
-              <th className="px-4 py-3">Username</th>
-              <th className="px-4 py-3 text-right">Actions</th>
+              <th scope="col" className="px-4 py-3">Database</th>
+              <th scope="col" className="px-4 py-3">Server</th>
+              <th scope="col" className="px-4 py-3">Owner</th>
+              <th scope="col" className="px-4 py-3">Username</th>
+              <th scope="col" className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -62,6 +63,7 @@ export default function Databases() {
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
     </div>
   );

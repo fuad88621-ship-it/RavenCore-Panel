@@ -76,14 +76,15 @@ function EggDetail({ egg, onBack }) {
       )}
 
       <Card className="!p-0 overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/[0.06] text-left text-xs uppercase tracking-wider text-zinc-500">
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Env</th>
-              <th className="px-4 py-3">Default</th>
-              <th className="px-4 py-3">Editable</th>
-              <th className="px-4 py-3 text-right">Actions</th>
+              <th scope="col" className="px-4 py-3">Name</th>
+              <th scope="col" className="px-4 py-3">Env</th>
+              <th scope="col" className="px-4 py-3">Default</th>
+              <th scope="col" className="px-4 py-3">Editable</th>
+              <th scope="col" className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -105,6 +106,7 @@ function EggDetail({ egg, onBack }) {
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
     </div>
   );
@@ -184,7 +186,7 @@ export default function Nests() {
                   <p className="text-xs text-zinc-500">{n.description || '—'} · {n.egg_count} egg(s)</p>
                 </div>
               </div>
-              <button className="text-zinc-500 hover:text-red-400" onClick={() => removeNest(n)}><Icons.Trash className="h-4 w-4" /></button>
+              <button className="text-zinc-500 hover:text-red-400" onClick={() => removeNest(n)} aria-label={`Delete nest ${n.name}`}><Icons.Trash className="h-4 w-4" /></button>
             </div>
             <EggList nestId={n.id} onSelect={setSelectedEgg} />
           </Card>

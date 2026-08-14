@@ -14,6 +14,7 @@ export default function NumberInput({
   label,
   allowEmpty = false,
   id,
+  describedBy,
 }) {
   const [focused, setFocused] = useState(false);
   const [raw, setRaw] = useState(String(value ?? ''));
@@ -63,8 +64,11 @@ export default function NumberInput({
 
     const n = parse(v);
     if (n !== undefined) {
-      setRaw(String(n));
-      onChange?.(n);
+      let clamped = n;
+      if (min !== undefined && clamped < min) clamped = min;
+      if (max !== undefined && clamped > max) clamped = max;
+      setRaw(String(clamped));
+      onChange?.(clamped);
     }
   }
 
@@ -93,6 +97,13 @@ export default function NumberInput({
     commit(next);
   }
 
+  function handleKeyDown(e) {
+    if (e.key === 'ArrowUp') { e.preventDefault(); stepBy(1); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); stepBy(-1); }
+    else if (e.key === 'Home') { e.preventDefault(); if (min !== undefined) commit(min); }
+    else if (e.key === 'End') { e.preventDefault(); if (max !== undefined) commit(max); }
+  }
+
   const invalid = raw !== '' && raw !== '-' && parse(raw) === undefined;
 
   return (
@@ -116,9 +127,11 @@ export default function NumberInput({
         value={raw}
         aria-label={ariaLabel}
         aria-invalid={invalid}
+        aria-describedby={describedBy}
         onFocus={() => setFocused(true)}
         onChange={handleChange}
         onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
       />
       <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-white/[0.08] bg-[#0c0c10] sm:flex">
         <button

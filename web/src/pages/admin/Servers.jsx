@@ -517,16 +517,17 @@ export default function Servers() {
       </div>
 
       <Card className="!p-0 overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/[0.06] text-left text-xs uppercase tracking-wider text-zinc-500">
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Owner</th>
-              <th className="px-4 py-3">Egg</th>
-              <th className="px-4 py-3">Node</th>
-              <th className="px-4 py-3">Limits</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3 text-right">Actions</th>
+              <th scope="col" className="px-4 py-3">Name</th>
+              <th scope="col" className="px-4 py-3">Owner</th>
+              <th scope="col" className="px-4 py-3">Egg</th>
+              <th scope="col" className="px-4 py-3">Node</th>
+              <th scope="col" className="px-4 py-3">Limits</th>
+              <th scope="col" className="px-4 py-3">Status</th>
+              <th scope="col" className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -554,20 +555,21 @@ export default function Servers() {
                 <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
                   {!s.owner_username && (
-                    <button className="btn-primary !px-2 !py-1 text-xs mr-1" onClick={() => setAssigning(s)}>Assign</button>
+                    <button className="btn-primary !px-2 !py-1 text-xs mr-1" onClick={() => setAssigning(s)} aria-label={`Assign owner to server ${s.name}`}>Assign</button>
                   )}
                   {s.status === 'running' ? (
-                    <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => power(s.id, 'stop')}>Stop</button>
+                    <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => power(s.id, 'stop')} aria-label={`Stop server ${s.name}`}>Stop</button>
                   ) : (
-                    <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => power(s.id, 'start')} disabled={s.status === 'installing'}>Start</button>
+                    <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => power(s.id, 'start')} disabled={s.status === 'installing'} aria-label={`Start server ${s.name}`}>Start</button>
                   )}
-                  <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => toggleSuspend(s)}>{s.status === 'suspended' ? 'Unsuspend' : 'Suspend'}</button>
-                  <button className="btn-danger !px-2 !py-1 text-xs" onClick={() => remove(s)}>Delete</button>
+                  <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => toggleSuspend(s)} aria-label={`${s.status === 'suspended' ? 'Unsuspend' : 'Suspend'} server ${s.name}`}>{s.status === 'suspended' ? 'Unsuspend' : 'Suspend'}</button>
+                  <button className="btn-danger !px-2 !py-1 text-xs" onClick={() => remove(s)} aria-label={`Delete server ${s.name}`}>Delete</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
     </div>
   );

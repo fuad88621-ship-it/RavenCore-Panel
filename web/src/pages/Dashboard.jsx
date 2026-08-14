@@ -284,17 +284,16 @@ export default function Dashboard() {
                 {user?.root_admin ? "Others' servers" : 'Shared with me'}
               </button>
             </div>
-            {servers.length > 0 && (
-              <div className="relative max-w-xs">
-                <Icons.Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                <input
-                  className="input !pl-9"
-                  placeholder="Search servers…"
-                  value={search}
-                  onChange={(e) => { setSearch(e.target.value); setVisibleCount(PAGE_SIZE); }}
-                />
-              </div>
-            )}
+            <div className="relative max-w-xs">
+              <Icons.Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+              <input
+                className="input !pl-9"
+                placeholder="Search servers…"
+                value={search}
+                disabled={servers.length === 0}
+                onChange={(e) => { setSearch(e.target.value); setVisibleCount(PAGE_SIZE); }}
+              />
+            </div>
           </div>
         </div>
         {error && <p className="text-sm text-red-400">{error}</p>}

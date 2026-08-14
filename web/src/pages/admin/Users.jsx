@@ -78,15 +78,16 @@ export default function Users() {
       )}
 
       <Card className="!p-0 overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/[0.06] text-left text-xs uppercase tracking-wider text-zinc-500">
-              <th className="px-4 py-3">User</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Servers</th>
-              <th className="px-4 py-3">Role</th>
-              <th className="px-4 py-3">Created</th>
-              <th className="px-4 py-3 text-right">Actions</th>
+              <th scope="col" className="px-4 py-3">User</th>
+              <th scope="col" className="px-4 py-3">Email</th>
+              <th scope="col" className="px-4 py-3">Servers</th>
+              <th scope="col" className="px-4 py-3">Role</th>
+              <th scope="col" className="px-4 py-3">Created</th>
+              <th scope="col" className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -111,6 +112,7 @@ export default function Users() {
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
     </div>
   );

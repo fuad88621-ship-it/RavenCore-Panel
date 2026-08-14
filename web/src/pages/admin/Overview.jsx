@@ -60,14 +60,15 @@ export default function Overview() {
 
       <SectionHeader title="Node Resources" sub="Memory, disk and CPU usage per node." />
       <Card className="!p-0 overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/[0.06] text-left text-xs uppercase tracking-wider text-zinc-500">
-              <th className="px-4 py-3">Node</th>
-              <th className="px-4 py-3">Servers</th>
-              <th className="px-4 py-3">Memory</th>
-              <th className="px-4 py-3">Disk</th>
-              <th className="px-4 py-3">CPU</th>
+              <th scope="col" className="px-4 py-3">Node</th>
+              <th scope="col" className="px-4 py-3">Servers</th>
+              <th scope="col" className="px-4 py-3">Memory</th>
+              <th scope="col" className="px-4 py-3">Disk</th>
+              <th scope="col" className="px-4 py-3">CPU</th>
             </tr>
           </thead>
           <tbody>
@@ -82,6 +83,7 @@ export default function Overview() {
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
     </div>
   );
