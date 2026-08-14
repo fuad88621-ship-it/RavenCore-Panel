@@ -82,6 +82,7 @@ function ConsoleTab({ server }) {
   const wsRef = useRef(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState('');
+  const [cmd, setCmd] = useState('');
 
   useEffect(() => {
     const installing = server.status === 'installing';
@@ -192,6 +193,31 @@ function ConsoleTab({ server }) {
         {error && <span className="text-xs text-red-400">{error}</span>}
       </div>
       <div ref={termRef} className="h-[50vh] min-h-[280px] max-h-[560px] overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0f]" />
+      <form
+        className="mt-2 flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const value = cmd.trim();
+          if (!value) return;
+          const ws = wsRef.current;
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(value + '\n');
+          } else {
+            api.command(server.id, value).catch(() => {});
+          }
+          setCmd('');
+        }}
+      >
+        <input
+          className="input flex-1 font-mono"
+          placeholder={installing ? 'Installing… commands unavailable' : 'Type a command and press Enter…'}
+          value={cmd}
+          disabled={installing}
+          onChange={(e) => setCmd(e.target.value)}
+          aria-label="Console command input"
+        />
+        <button type="submit" className="btn-primary shrink-0" disabled={installing}>Send</button>
+      </form>
     </div>
   );
 }

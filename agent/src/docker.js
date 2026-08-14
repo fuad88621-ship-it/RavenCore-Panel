@@ -80,18 +80,25 @@ export async function createBot({ uuid, identifier, image, startup_command, inst
 
   // Install step: run install command in a one-off container and capture logs
   if (install_command) {
-    console.log(`[agent] installing ${identifier}: ${install_command.slice(0, 80)}…`);
+    // Egg install scripts are authored with CRLF line endings; strip the \r so
+    // `sh -c` doesn't choke on them.
+    const cleanInstall = String(install_command).replace(/\r/g, '');
+    console.log(`[agent] installing ${identifier}: ${cleanInstall.slice(0, 80)}…`);
     const installContainer = await docker.createContainer({
       Image: image,
       name: `${name}-install`,
-      WorkingDir: mount_target,
+      User: 'root',
+      WorkingDir: '/mnt/server',
       HostConfig: {
-        Binds: [`${dir}:${mount_target}`],
+        // Install scripts write to /mnt/server (Pterodactyl convention); the
+        // same host dir is mounted at mount_target for runtime, so files
+        // installed here are visible when the server starts.
+        Binds: [`${dir}:/mnt/server`],
         NetworkMode: net.id,
         CapDrop: ['ALL'],
         SecurityOpt: ['no-new-privileges:true'],
       },
-      Cmd: ['sh', '-c', install_command],
+      Cmd: ['sh', '-c', cleanInstall],
       AttachStdout: true,
       AttachStderr: true,
       Labels: { 'raven.uuid': uuid, 'raven.install': 'true' },
@@ -100,7 +107,7 @@ export async function createBot({ uuid, identifier, image, startup_command, inst
     const logHandle = await fs.open(logPath, 'w');
     const installStream = await installContainer.attach({ stream: true, stdout: true, stderr: true });
     installStream.on('data', (chunk) => {
-      logHandle.write(stripDockerStream(chunk));
+      logHandle.write(stripDockerStream(chunk)).catch(() => {});
     });
     await installContainer.start();
     await installContainer.wait();
