@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../../api.js';
+import NumberInput from '../../components/NumberInput.jsx';
 import { Badge, Card, GlowButton, Icons, SectionHeader, Select, ShineCard, useToast, cn } from '../../components/ui.jsx';
 
 function AllocationsTab({ node }) {
@@ -35,8 +36,13 @@ function AllocationsTab({ node }) {
 
   async function addRange(e) {
     e.preventDefault();
+    const f = +from, t = +to;
+    if (!Number.isInteger(f) || !Number.isInteger(t) || f < 1 || t > 65535 || f > t) {
+      setError('Invalid port range: use integers from 1 to 65535 with from ≤ to');
+      return;
+    }
     try {
-      const d = await api.admin.addAllocationRange(node.id, ip, +from, +to);
+      const d = await api.admin.addAllocationRange(node.id, ip, f, t);
       toast && toast.push(`Added ${d.added} allocations`);
       setFrom(''); setTo('');
       load();
@@ -117,13 +123,21 @@ function NodeDetail({ node, onBack }) {
   const [form, setForm] = useState({ ...node });
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const savedTimer = useRef(null);
+
+  useEffect(() => { setForm({ ...node }); }, [node.id]);
+
+  useEffect(() => () => {
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+  }, []);
 
   async function save() {
     try {
       const d = await api.admin.updateNode(node.id, form);
       setForm(d.node);
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       setError(e.message);
     }
@@ -196,14 +210,14 @@ function NodeDetail({ node, onBack }) {
             <h3 className="font-semibold text-white">Configuration</h3>
             <div><label className="label">Daemon Server File Directory</label><input className="input font-mono" value={form.file_directory || '/var/lib/raven/bots'} onChange={(e) => setForm({ ...form, file_directory: e.target.value })} /></div>
             <div className="grid grid-cols-3 gap-3">
-              <div><label className="label">Total Memory (MiB)</label><input className="input" type="number" value={form.memory_mb} onChange={(e) => setForm({ ...form, memory_mb: +e.target.value })} /></div>
-              <div><label className="label">Memory Over-Allocation %</label><input className="input" type="number" value={form.memory_overallocate} onChange={(e) => setForm({ ...form, memory_overallocate: +e.target.value })} /></div>
-              <div><label className="label">CPU Cores</label><input className="input" type="number" value={form.cpu_cores} onChange={(e) => setForm({ ...form, cpu_cores: +e.target.value })} /></div>
-              <div><label className="label">Total Disk (MiB)</label><input className="input" type="number" value={form.disk_mb} onChange={(e) => setForm({ ...form, disk_mb: +e.target.value })} /></div>
-              <div><label className="label">Disk Over-Allocation %</label><input className="input" type="number" value={form.disk_overallocate} onChange={(e) => setForm({ ...form, disk_overallocate: +e.target.value })} /></div>
-              <div><label className="label">CPU Over-Allocation %</label><input className="input" type="number" value={form.cpu_overallocate} onChange={(e) => setForm({ ...form, cpu_overallocate: +e.target.value })} /></div>
-              <div><label className="label">Daemon Port</label><input className="input" type="number" value={form.port} onChange={(e) => setForm({ ...form, port: +e.target.value })} /></div>
-              <div><label className="label">Daemon SFTP Port</label><input className="input" type="number" value={form.sftp_port} onChange={(e) => setForm({ ...form, sftp_port: +e.target.value })} /></div>
+              <div><label className="label">Total Memory (MiB)</label><NumberInput value={form.memory_mb} onChange={(n) => setForm({ ...form, memory_mb: n })} /></div>
+              <div><label className="label">Memory Over-Allocation %</label><NumberInput value={form.memory_overallocate} onChange={(n) => setForm({ ...form, memory_overallocate: n })} /></div>
+              <div><label className="label">CPU Cores</label><NumberInput value={form.cpu_cores} onChange={(n) => setForm({ ...form, cpu_cores: n })} /></div>
+              <div><label className="label">Total Disk (MiB)</label><NumberInput value={form.disk_mb} onChange={(n) => setForm({ ...form, disk_mb: n })} /></div>
+              <div><label className="label">Disk Over-Allocation %</label><NumberInput value={form.disk_overallocate} onChange={(n) => setForm({ ...form, disk_overallocate: n })} /></div>
+              <div><label className="label">CPU Over-Allocation %</label><NumberInput value={form.cpu_overallocate} onChange={(n) => setForm({ ...form, cpu_overallocate: n })} /></div>
+              <div><label className="label">Daemon Port</label><NumberInput value={form.port} onChange={(n) => setForm({ ...form, port: n })} /></div>
+              <div><label className="label">Daemon SFTP Port</label><NumberInput value={form.sftp_port} onChange={(n) => setForm({ ...form, sftp_port: n })} /></div>
               <div><label className="label">Daemon Token</label><input className="input font-mono" value={form.daemon_token} onChange={(e) => setForm({ ...form, daemon_token: e.target.value })} /></div>
             </div>
             <p className="text-xs text-zinc-500">Over-allocation: enter -1 for unlimited, 0 to prevent over-allocating.</p>
@@ -260,8 +274,12 @@ export default function Nodes() {
   }
 
   async function toggle(n) {
-    await api.admin.updateNode(n.id, { enabled: !n.enabled });
-    load();
+    try {
+      await api.admin.updateNode(n.id, { enabled: !n.enabled });
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   async function remove(n) {
@@ -302,8 +320,8 @@ export default function Nodes() {
               </Select>
             </div>
             <div><label className="label">FQDN</label><input className="input font-mono" value={form.fqdn} onChange={(e) => setForm({ ...form, fqdn: e.target.value })} placeholder="node.example.com" required /></div>
-            <div><label className="label">Daemon Port</label><input className="input" type="number" value={form.port} onChange={(e) => setForm({ ...form, port: +e.target.value })} /></div>
-            <div><label className="label">SFTP Port</label><input className="input" type="number" value={form.sftp_port} onChange={(e) => setForm({ ...form, sftp_port: +e.target.value })} /></div>
+            <div><label className="label">Daemon Port</label><NumberInput value={form.port} onChange={(n) => setForm({ ...form, port: n })} /></div>
+            <div><label className="label">SFTP Port</label><NumberInput value={form.sftp_port} onChange={(n) => setForm({ ...form, sftp_port: n })} /></div>
             <div>
               <label className="label">Visibility</label>
               <Select value={form.visibility} onChange={(e) => setForm({ ...form, visibility: e.target.value })}>
@@ -319,12 +337,12 @@ export default function Nodes() {
               </Select>
             </div>
             <div><label className="label">File Directory</label><input className="input font-mono" value={form.file_directory} onChange={(e) => setForm({ ...form, file_directory: e.target.value })} /></div>
-            <div><label className="label">Total Memory (MiB)</label><input className="input" type="number" value={form.memory_mb} onChange={(e) => setForm({ ...form, memory_mb: +e.target.value })} /></div>
-            <div><label className="label">Memory Over-Allocation %</label><input className="input" type="number" value={form.memory_overallocate} onChange={(e) => setForm({ ...form, memory_overallocate: +e.target.value })} /></div>
-            <div><label className="label">Total Disk (MiB)</label><input className="input" type="number" value={form.disk_mb} onChange={(e) => setForm({ ...form, disk_mb: +e.target.value })} /></div>
-            <div><label className="label">Disk Over-Allocation %</label><input className="input" type="number" value={form.disk_overallocate} onChange={(e) => setForm({ ...form, disk_overallocate: +e.target.value })} /></div>
-            <div><label className="label">CPU Cores</label><input className="input" type="number" value={form.cpu_cores} onChange={(e) => setForm({ ...form, cpu_cores: +e.target.value })} /></div>
-            <div><label className="label">CPU Over-Allocation %</label><input className="input" type="number" value={form.cpu_overallocate} onChange={(e) => setForm({ ...form, cpu_overallocate: +e.target.value })} /></div>
+            <div><label className="label">Total Memory (MiB)</label><NumberInput value={form.memory_mb} onChange={(n) => setForm({ ...form, memory_mb: n })} /></div>
+            <div><label className="label">Memory Over-Allocation %</label><NumberInput value={form.memory_overallocate} onChange={(n) => setForm({ ...form, memory_overallocate: n })} /></div>
+            <div><label className="label">Total Disk (MiB)</label><NumberInput value={form.disk_mb} onChange={(n) => setForm({ ...form, disk_mb: n })} /></div>
+            <div><label className="label">Disk Over-Allocation %</label><NumberInput value={form.disk_overallocate} onChange={(n) => setForm({ ...form, disk_overallocate: n })} /></div>
+            <div><label className="label">CPU Cores</label><NumberInput value={form.cpu_cores} onChange={(n) => setForm({ ...form, cpu_cores: n })} /></div>
+            <div><label className="label">CPU Over-Allocation %</label><NumberInput value={form.cpu_overallocate} onChange={(n) => setForm({ ...form, cpu_overallocate: n })} /></div>
             <div className="col-span-2">
               <label className="label">Daemon Token (agent secret)</label>
               <input className="input font-mono" value={form.daemon_token} onChange={(e) => setForm({ ...form, daemon_token: e.target.value })} placeholder="Leave empty to auto-generate" />

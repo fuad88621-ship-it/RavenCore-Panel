@@ -218,6 +218,9 @@
 .btn {
   @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed;
 }
+.btn:focus-visible {
+  @apply outline-none ring-2 ring-violet-500/50 ring-offset-2 ring-offset-[#070709];
+}
 .btn-primary {
   @apply btn relative overflow-hidden bg-violet-600 text-white shadow-[0_0_24px_rgb(139_92_246/0.3)] transition-all hover:bg-violet-500 hover:shadow-[0_0_32px_rgb(139_92_246/0.45)] active:scale-[0.98];
 }
@@ -227,9 +230,15 @@
 .btn-danger {
   @apply btn rounded-xl bg-red-600/90 text-white transition-all hover:bg-red-500 active:scale-[0.98];
 }
+.btn-danger:focus-visible {
+  @apply ring-red-500/50;
+}
 .input {
   @apply w-full rounded-xl bg-white/[0.04] border border-white/[0.08] px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500/40 focus:border-violet-500/40 transition-colors;
   color-scheme: dark;
+}
+.input:focus-visible {
+  @apply ring-2 ring-violet-500/40;
 }
 
 select.input, select {
@@ -248,4 +257,14 @@ select.input, select {
 }
 .chip {
   @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
+}
+
+/* ── Reduced motion ───────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Terminal } from '@xterm/xterm';
 import { api } from '../api.js';
+import { useDebouncedCallback } from '../useDebounce.js';
 import { Card, ErrorState, Icons, Select, Skeleton, StatusBadge, useToast, cn } from '../components/ui.jsx';
 
 function StatChip({ label, value }) {
@@ -16,7 +17,8 @@ function StatChip({ label, value }) {
 function formatUptime(seconds) {
   if (!seconds) return '0s';
   // Guard against bogus epoch/timestamp values that produce multi-year uptimes.
-  if (seconds > 3153600000) return 'Unknown';
+  const MAX_SANE_UPTIME_SECONDS = 100 * 365 * 24 * 60 * 60; // 100 years
+  if (seconds > MAX_SANE_UPTIME_SECONDS) return 'Unknown';
   const d = Math.floor(seconds / 86400);
   const h = Math.floor((seconds % 86400) / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -75,7 +77,9 @@ function ConsoleTab({ server }) {
     const installing = server.status === 'installing';
     let term;
     let pollId;
+    let startupTimer;
     let disposed = false;
+    let onVis;
 
     function setConn(v) { if (!disposed) setConnected(v); }
     function setErr(v) { if (!disposed) setError(v); }
@@ -87,7 +91,7 @@ function ConsoleTab({ server }) {
         fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
         theme: { background: '#0a0a0f', foreground: '#d1d5db', cursor: '#8b5cf6' },
       });
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => { startupTimer = setTimeout(r, 300); });
       if (disposed) return;
       term.open(termRef.current);
 
@@ -95,7 +99,10 @@ function ConsoleTab({ server }) {
         term.writeln('\x1b[33m● Server is installing. Install output will appear below.\x1b[0m');
         term.writeln('');
         let lastLog = '';
-        pollId = setInterval(async () => {
+        let busy = false;
+        const poll = async () => {
+          if (busy || disposed) return;
+          busy = true;
           try {
             const d = await api.installLog(server.id);
             if (d.log && d.log !== lastLog) {
@@ -105,8 +112,11 @@ function ConsoleTab({ server }) {
             }
           } catch (e) {
             // ignore poll errors
+          } finally {
+            busy = false;
           }
-        }, 2000);
+        };
+        pollId = setInterval(poll, 2000);
         return;
       }
 
@@ -133,13 +143,12 @@ function ConsoleTab({ server }) {
         if (ws.readyState === WebSocket.OPEN) ws.send(data);
       });
 
-      const onVis = () => {
+      onVis = () => {
         if (!document.hidden && !disposed) {
           try { term.resize(term.cols, term.rows); } catch {}
         }
       };
       document.addEventListener('visibilitychange', onVis);
-      ws.addEventListener('close', () => document.removeEventListener('visibilitychange', onVis));
     }
 
     init().catch((e) => setErr(e.message));
@@ -147,8 +156,10 @@ function ConsoleTab({ server }) {
     return () => {
       disposed = true;
       if (pollId) clearInterval(pollId);
+      if (startupTimer) clearTimeout(startupTimer);
       try { wsRef.current?.close(); } catch {}
       try { term?.dispose(); } catch {}
+      if (onVis) document.removeEventListener('visibilitychange', onVis);
     };
   }, [server.id, server.status]);
 
@@ -170,7 +181,7 @@ function ConsoleTab({ server }) {
         )}
         {error && <span className="text-xs text-red-400">{error}</span>}
       </div>
-      <div ref={termRef} className="h-[480px] overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0f]" />
+      <div ref={termRef} className="h-[50vh] min-h-[280px] max-h-[560px] overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0f]" />
     </div>
   );
 }
@@ -245,10 +256,16 @@ function FilesTab({ server }) {
   const [error, setError] = useState('');
   const [toast, setToast] = useState(null);
   const fileInputRef = useRef(null);
+  const toastTimer = useRef(null);
+
+  useEffect(() => () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+  }, []);
 
   function showToast(text, isError = false) {
     setToast({ text, error: isError });
-    setTimeout(() => setToast(null), 4000);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
   }
 
   async function load(p) {
@@ -266,6 +283,13 @@ function FilesTab({ server }) {
 
   function join(p, name) {
     return p === '/' ? `/${name}` : `${p}/${name}`;
+  }
+
+  // Reject names that could escape the server directory (path traversal).
+  function isValidName(name) {
+    if (!name || name === '.' || name === '..') return false;
+    if (/[\/\\\x00-\x1f]|\.\./.test(name)) return false;
+    return true;
   }
 
   async function openFile(f) {
@@ -305,6 +329,10 @@ function FilesTab({ server }) {
       setModal(null);
       return;
     }
+    if (!isValidName(modalValue)) {
+      setError('Invalid name: cannot contain /, \\, or ..');
+      return;
+    }
     try {
       await api.renameFile(server.id, join(path, f.name), join(path, modalValue));
       setModal(null);
@@ -317,7 +345,12 @@ function FilesTab({ server }) {
 
   async function upload(e) {
     const file = e.target.files[0];
+    if (fileInputRef.current) fileInputRef.current.value = '';
     if (!file) return;
+    if (!isValidName(file.name)) {
+      setError('Invalid file name');
+      return;
+    }
     const reader = new FileReader();
     reader.onload = async (ev) => {
       const dataUrl = ev.target.result;
@@ -350,6 +383,10 @@ function FilesTab({ server }) {
 
   async function createFolder() {
     if (!modalValue.trim()) return;
+    if (!isValidName(modalValue.trim())) {
+      setError('Invalid name: cannot contain /, \\, or ..');
+      return;
+    }
     try {
       await api.createFolder(server.id, join(path, modalValue.trim()));
       setModal(null);
@@ -363,6 +400,10 @@ function FilesTab({ server }) {
 
   async function createFile() {
     if (!modalValue.trim()) return;
+    if (!isValidName(modalValue.trim())) {
+      setError('Invalid name: cannot contain /, \\, or ..');
+      return;
+    }
     try {
       const p = join(path, modalValue.trim());
       await api.writeFile(server.id, p, '');
@@ -420,9 +461,15 @@ function FilesTab({ server }) {
   }
 
   async function deleteSelected() {
+    const names = Array.from(selected);
     try {
-      await Promise.all(Array.from(selected).map((n) => api.deleteFile(server.id, join(path, n))));
-      showToast(`Deleted ${selected.size} item(s)`);
+      const results = await Promise.allSettled(names.map((n) => api.deleteFile(server.id, join(path, n))));
+      const failed = results.filter((r) => r.status === 'rejected');
+      if (failed.length > 0) {
+        setError(`Failed to delete ${failed.length} item(s)`);
+      } else {
+        showToast(`Deleted ${names.length} item(s)`);
+      }
       setSelected(new Set());
       setModal(null);
       load(path);
@@ -482,7 +529,7 @@ function FilesTab({ server }) {
               <nav className="flex min-w-0 items-center gap-1 font-mono text-sm">
                 <button onClick={() => load('/')} className="rounded px-1.5 py-0.5 text-violet-300 transition hover:bg-violet-500/10">/</button>
                 {crumbs.map((seg, i) => (
-                  <span key={i} className="flex items-center gap-1">
+                  <span key={`${seg}-${i}`} className="flex items-center gap-1">
                     <span className="text-zinc-600">/</span>
                     <button
                       onClick={() => load('/' + crumbs.slice(0, i + 1).join('/'))}
@@ -510,10 +557,10 @@ function FilesTab({ server }) {
               <button onClick={() => { setModalValue(''); setModal({ type: 'newFolder' }); }} className="btn-ghost !px-3 !py-1.5 text-xs">
                 <Icons.FolderPlus className="h-3.5 w-3.5" /> New folder
               </button>
-              <label className="btn-primary !px-3 !py-1.5 cursor-pointer text-xs">
+              <button type="button" className="btn-primary !px-3 !py-1.5 text-xs" onClick={() => fileInputRef.current?.click()}>
                 <Icons.Upload className="h-3.5 w-3.5" /> Upload
-                <input type="file" className="hidden" onChange={upload} />
-              </label>
+              </button>
+              <input ref={fileInputRef} type="file" className="hidden" onChange={upload} />
             </div>
           </div>
 
@@ -789,7 +836,7 @@ function DatabasesTab({ server }) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-mono font-semibold text-white">{db.database_name}</p>
-                <p className="text-xs text-zinc-500">Host: {db.host}:3306</p>
+                <p className="text-xs text-zinc-500">Host: {db.host}:{db.port || 3306}</p>
               </div>
               <div className="flex gap-2">
                 <button className="btn-ghost !px-3 !py-1.5 text-xs" onClick={() => setRevealed((r) => ({ ...r, [db.id]: !r[db.id] }))}>
@@ -804,7 +851,7 @@ function DatabasesTab({ server }) {
                 <p><span className="text-zinc-500">Database:</span> <span className="text-zinc-200">{db.database_name}</span></p>
                 <p><span className="text-zinc-500">Username:</span> <span className="text-zinc-200">{db.username}</span></p>
                 <p><span className="text-zinc-500">Password:</span> <span className="text-zinc-200">{db.password}</span></p>
-                <p><span className="text-zinc-500">Host:</span> <span className="text-zinc-200">{db.host}:3306</span></p>
+                <p><span className="text-zinc-500">Host:</span> <span className="text-zinc-200">{db.host}:{db.port || 3306}</span></p>
               </div>
             )}
           </Card>
@@ -821,13 +868,18 @@ function StartupTab({ server }) {
   const [image, setImage] = useState('');
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const savedTimer = useRef(null);
+
+  useEffect(() => () => {
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+  }, []);
 
   useEffect(() => {
     api.startup(server.id).then((d) => {
-      setVariables(d.variables);
+      setVariables(d.variables || []);
       setEnv(d.env || {});
-      setStartup(d.startup_command);
-      setImage(d.docker_image);
+      setStartup(d.startup_command || '');
+      setImage(d.docker_image || '');
     }).catch((e) => setError(e.message));
   }, [server.id]);
 
@@ -835,7 +887,8 @@ function StartupTab({ server }) {
     try {
       await api.updateStartup(server.id, env);
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       setError(e.message);
     }
@@ -878,13 +931,19 @@ function SettingsTab({ server, onDeleted }) {
   const [description, setDescription] = useState(server.description || '');
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const savedTimer = useRef(null);
   const toast = useToast();
+
+  useEffect(() => () => {
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+  }, []);
 
   async function save() {
     try {
       await api.updateSettings(server.id, { name, description });
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSaved(false), 2000);
       toast && toast.push('Settings saved');
     } catch (e) {
       setError(e.message);
@@ -970,14 +1029,22 @@ function SchedulesTab({ server }) {
   }
 
   async function toggle(s) {
-    await api.updateSchedule(s.id, { is_active: !s.is_active });
-    load();
+    try {
+      await api.updateSchedule(s.id, { is_active: !s.is_active });
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   async function remove(s) {
     if (!confirm(`Delete schedule ${s.name}?`)) return;
-    await api.deleteSchedule(s.id);
-    load();
+    try {
+      await api.deleteSchedule(s.id);
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   return (
@@ -1056,8 +1123,7 @@ function UsersTab({ server }) {
 
   useEffect(() => { load(); }, [server.id]);
 
-  async function doSearch(q) {
-    setSearch(q);
+  async function runSearch(q) {
     if (q.trim().length < 3) { setResults([]); return; }
     setSearching(true);
     try {
@@ -1068,6 +1134,13 @@ function UsersTab({ server }) {
     } finally {
       setSearching(false);
     }
+  }
+  const debouncedSearch = useDebouncedCallback(runSearch, 300);
+
+  function doSearch(q) {
+    setSearch(q);
+    setSelected(null);
+    debouncedSearch(q);
   }
 
   function pickUser(u) {
@@ -1090,8 +1163,12 @@ function UsersTab({ server }) {
 
   async function remove(su) {
     if (!confirm(`Remove ${su.username} from this server?`)) return;
-    await api.deleteSubuser(su.id);
-    load();
+    try {
+      await api.deleteSubuser(su.id);
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   function togglePerm(p) {
@@ -1110,6 +1187,7 @@ function UsersTab({ server }) {
             className="input"
             value={search}
             onChange={(e) => doSearch(e.target.value)}
+            autoComplete="off"
             placeholder="Type an email or username (min 3 chars)"
             required
           />
@@ -1221,8 +1299,12 @@ function BackupsTab({ server }) {
 
   async function remove(b) {
     if (!confirm(`Delete backup ${b.name}?`)) return;
-    await api.deleteBackup(b.id);
-    load();
+    try {
+      await api.deleteBackup(b.id);
+      load();
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   return (
@@ -1249,7 +1331,7 @@ function BackupsTab({ server }) {
             {backups.map((b) => (
               <tr key={b.id} className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.03]">
                 <td className="px-4 py-3 font-mono text-white">{b.name}</td>
-                <td className="px-4 py-3 text-zinc-400">{(b.size_bytes / 1024 / 1024).toFixed(2)} MB</td>
+                <td className="px-4 py-3 text-zinc-400">{((b.size_bytes || 0) / 1024 / 1024).toFixed(2)} MB</td>
                 <td className="px-4 py-3">
                   <span className={`chip border ${b.status === 'completed' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20' : b.status === 'failed' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-amber-500/10 text-amber-300 border-amber-500/20'}`}>
                     {b.status}
@@ -1325,7 +1407,7 @@ function NetworkTab({ server }) {
 
   useEffect(() => {
     api.network(server.id).then((d) => setAllocations(d.allocations)).catch((e) => setError(e.message));
-    api.sftp(server.id).then(setSftp).catch(() => {});
+    api.sftp(server.id).then(setSftp).catch((e) => setError(e.message));
   }, [server.id]);
 
   async function rotateSftp() {
@@ -1401,18 +1483,34 @@ export default function ServerDetail() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.server(id).then((d) => setServer(d.server)).catch((e) => setError(e.message));
+    const ab = new AbortController();
+    let ignore = false;
+    api.server(id, { signal: ab.signal })
+      .then((d) => { if (!ignore) setServer(d.server); })
+      .catch((e) => { if (!ignore && e.name !== 'AbortError') setError(e.message); });
+    return () => { ignore = true; ab.abort(); };
   }, [id]);
 
   useEffect(() => {
     if (!server) return;
+    const controller = new AbortController();
     let mounted = true;
     function load() {
-      api.resources(server.id).then((d) => { if (mounted) setResources(d); }).catch(() => {});
+      if (document.hidden) return;
+      api.resources(server.id, { signal: controller.signal })
+        .then((d) => { if (mounted) setResources(d); })
+        .catch(() => {});
     }
     load();
     const t = setInterval(load, 2000);
-    return () => { mounted = false; clearInterval(t); };
+    const onVis = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      mounted = false;
+      controller.abort();
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [server?.id]);
 
   if (error) return <ErrorState title="Failed to load server" sub={error} onRetry={() => window.location.reload()} />;
@@ -1431,7 +1529,7 @@ export default function ServerDetail() {
     );
   }
 
-  const tabs = [
+  const tabs = useMemo(() => [
     { id: 'console', label: 'Console', icon: <Icons.Terminal className="h-4 w-4" /> },
     { id: 'files', label: 'Files', icon: <Icons.Folder className="h-4 w-4" /> },
     { id: 'databases', label: 'Databases', icon: <Icons.Database className="h-4 w-4" /> },
@@ -1442,7 +1540,7 @@ export default function ServerDetail() {
     { id: 'startup', label: 'Startup', icon: <Icons.Play className="h-4 w-4" /> },
     { id: 'activity', label: 'Activity', icon: <Icons.Clock className="h-4 w-4" /> },
     { id: 'settings', label: 'Settings', icon: <Icons.Gear className="h-4 w-4" /> },
-  ];
+  ], []);
 
   async function power(action) {
     try {
@@ -1462,7 +1560,7 @@ export default function ServerDetail() {
   const diskLimitMb = resources?.disk_limit_mb || server.disk_mb || 1;
   const isOffline = server.status !== 'running';
 
-  const statCards = resources ? [
+  const statCards = useMemo(() => resources ? [
     { icon: <Icons.Node className="h-5 w-5" />, label: 'Address', value: address, sub: server.node_fqdn },
     { icon: <Icons.Clock className="h-5 w-5" />, label: 'Uptime', value: isOffline ? 'Offline' : formatUptime(resources.uptime_seconds) },
     { icon: <Icons.Cpu className="h-5 w-5" />, label: 'CPU Load', value: isOffline ? '—' : `${resources.cpu}%`, sub: isOffline ? undefined : `/ ${server.cpu}%`, bar: isOffline ? 0 : (resources.cpu / server.cpu) * 100 },
@@ -1470,7 +1568,7 @@ export default function ServerDetail() {
     { icon: <Icons.Disk className="h-5 w-5" />, label: 'Disk', value: isOffline ? '—' : formatMemory(resources.disk_mb), sub: isOffline ? undefined : `/ ${formatMemory(diskLimitMb)}`, bar: isOffline ? 0 : (resources.disk_mb / diskLimitMb) * 100 },
     { icon: <Icons.CloudDown className="h-5 w-5" />, label: 'Network (In)', value: isOffline ? '—' : `${resources.network_rx_mb} MiB` },
     { icon: <Icons.CloudUp className="h-5 w-5" />, label: 'Network (Out)', value: isOffline ? '—' : `${resources.network_tx_mb} MiB` },
-  ] : [];
+  ] : [], [resources, address, server.node_fqdn, server.cpu, memLimitMb, diskLimitMb, isOffline]);
 
   return (
     <div>
@@ -1503,13 +1601,13 @@ export default function ServerDetail() {
         <button className="btn-danger" onClick={() => power('kill')}><Icons.Kill className="h-4 w-4" /> Kill</button>
       </div>
 
-      <div className="mb-4 flex gap-1 border-b border-white/[0.06]">
+      <div className={cn('mb-4 flex gap-1 overflow-x-auto border-b border-white/[0.06]', 'scrollbar-none')}>
         {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
             className={cn(
-              '-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
+              '-mb-px flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
               tab === t.id ? 'border-violet-500 text-white' : 'border-transparent text-zinc-500 hover:text-white'
             )}
           >
@@ -1519,29 +1617,28 @@ export default function ServerDetail() {
         ))}
       </div>
 
-      {tab === 'console' ? (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <ConsoleTab server={server} />
-          </div>
-          <div className="space-y-3">
-            {!resources && (
-              <div className="space-y-3">
-                {[...Array(7)].map((_, i) => (
-                  <Card key={i} className="flex h-[88px] items-center gap-3 p-4">
-                    <Skeleton className="h-10 w-10 rounded-lg" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-3 w-20" />
-                      <Skeleton className="h-4 w-28" />
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-            {statCards.map((s, i) => <StatCard key={s.label} {...s} index={i} />)}
-          </div>
+      <div className={cn('grid grid-cols-1 gap-4 lg:grid-cols-3', tab !== 'console' && 'hidden')}>
+        <div className="lg:col-span-2">
+          <ConsoleTab server={server} />
         </div>
-      ) : (
+        <div className="space-y-3">
+          {!resources && (
+            <div className="space-y-3">
+              {[...Array(7)].map((_, i) => (
+                <Card key={i} className="flex h-[88px] items-center gap-3 p-4">
+                  <Skeleton className="h-10 w-10 rounded-lg" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-4 w-28" />
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+          {statCards.map((s, i) => <StatCard key={s.label} {...s} index={i} />)}
+        </div>
+      </div>
+      {tab !== 'console' && (
         <>
           {tab === 'files' && <FilesTab server={server} />}
           {tab === 'databases' && <DatabasesTab server={server} />}

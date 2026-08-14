@@ -6,6 +6,15 @@ export default defineConfig({
   build: {
     outDir: '../panel/public',
     emptyOutDir: true,
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom', 'framer-motion'],
+          xterm: ['@xterm/xterm'],
+        },
+      },
+    },
   },
   server: {
     proxy: {

@@ -34,3 +34,6 @@ screenshots/
 
 # Reference/dashboard source (not part of RavenCore)
 Raven Hosting Dashboard/
+
+# Subagent artifacts
+.pi-subagents/

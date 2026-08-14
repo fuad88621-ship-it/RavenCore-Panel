@@ -1,15 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api.js';
 import { useAuth } from '../../App.jsx';
+import { useDebouncedCallback } from '../../useDebounce.js';
+import NumberInput from '../../components/NumberInput.jsx';
 import { Card, GlowButton, Icons, MultiSelect, SectionHeader, Select, ShineCard, StatusBadge, cn } from '../../components/ui.jsx';
-
-function useDebouncedCallback(cb, delay = 300) {
-  const timeout = useRef(null);
-  return (...args) => {
-    if (timeout.current) clearTimeout(timeout.current);
-    timeout.current = setTimeout(() => cb(...args), delay);
-  };
-}
 
 function Field({ label, hint, children }) {
   return (
@@ -100,10 +94,7 @@ function CreateServerForm({ onCreated }) {
     }).catch(() => {});
   }, [form.node_id]);
 
-  async function searchOwner(q) {
-    setOwnerSearch(q);
-    setOwnerSelected(null);
-    setForm((f) => ({ ...f, user_id: '' }));
+  async function runOwnerSearch(q) {
     if (q.trim().length < 3) { setOwnerResults([]); return; }
     setOwnerSearching(true);
     try {
@@ -114,6 +105,16 @@ function CreateServerForm({ onCreated }) {
     } finally {
       setOwnerSearching(false);
     }
+  }
+
+  const debouncedOwnerSearch = useDebouncedCallback(runOwnerSearch, 300);
+
+  function searchOwner(q) {
+    setOwnerSearch(q);
+    setOwnerSelected(null);
+    setForm((f) => ({ ...f, user_id: '' }));
+    if (q.trim().length < 3) { setOwnerResults([]); return; }
+    debouncedOwnerSearch(q);
   }
 
   function pickOwner(u) {
@@ -128,7 +129,7 @@ function CreateServerForm({ onCreated }) {
     setEnv(next);
     // Live-update the startup preview
     let preview = eggs.find((e) => String(e.id) === String(form.egg_id))?.startup_command || '';
-    preview = preview.replace(/\{\{([A-Z0-9_]+)\}\}/g, (m, name) => next[name] ?? m);
+    preview = preview.replace(/\{\{([A-Za-z0-9_]+)\}\}/g, (m, name) => next[name] ?? m);
     setStartupPreview(preview);
   }
 
@@ -221,9 +222,9 @@ function CreateServerForm({ onCreated }) {
         <div className="space-y-4">
           <h3 className="font-semibold text-white">Application Feature Limits</h3>
           <div className="grid grid-cols-3 gap-4">
-            <Field label="Database Limit"><input className="input" type="number" min={0} value={form.databases} onChange={(e) => setForm({ ...form, databases: +e.target.value })} /></Field>
-            <Field label="Allocation Limit"><input className="input" type="number" min={0} value={form.allocations} onChange={(e) => setForm({ ...form, allocations: +e.target.value })} /></Field>
-            <Field label="Backup Limit"><input className="input" type="number" min={0} value={form.backups} onChange={(e) => setForm({ ...form, backups: +e.target.value })} /></Field>
+            <Field label="Database Limit"><NumberInput min={0} value={form.databases} onChange={(n) => setForm({ ...form, databases: n })} /></Field>
+            <Field label="Allocation Limit"><NumberInput min={0} value={form.allocations} onChange={(n) => setForm({ ...form, allocations: n })} /></Field>
+            <Field label="Backup Limit"><NumberInput min={0} value={form.backups} onChange={(n) => setForm({ ...form, backups: n })} /></Field>
           </div>
         </div>
 
@@ -231,12 +232,12 @@ function CreateServerForm({ onCreated }) {
         <div className="space-y-4">
           <h3 className="font-semibold text-white">Resource Management</h3>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <Field label="CPU Limit (%)" hint="0 = unlimited. 100 = 1 thread. Quad core = 400."><input className="input" type="number" min={0} value={form.cpu} onChange={(e) => setForm({ ...form, cpu: +e.target.value })} /></Field>
+            <Field label="CPU Limit (%)" hint="0 = unlimited. 100 = 1 thread. Quad core = 400."><NumberInput min={0} value={form.cpu} onChange={(n) => setForm({ ...form, cpu: n })} /></Field>
             <Field label="CPU Pinning" hint="Specific threads, e.g. 0, 0-1,3. Leave blank for all."><input className="input font-mono" value={form.cpu_pinning} onChange={(e) => setForm({ ...form, cpu_pinning: e.target.value })} /></Field>
-            <Field label="Memory (MiB)" hint="Maximum RAM for this container. 0 = unlimited."><input className="input" type="number" min={0} value={form.memory_mb} onChange={(e) => setForm({ ...form, memory_mb: +e.target.value })} /></Field>
-            <Field label="Swap (MiB)" hint="-1 = unlimited, 0 = disabled."><input className="input" type="number" value={form.swap_mb} onChange={(e) => setForm({ ...form, swap_mb: +e.target.value })} /></Field>
-            <Field label="Disk Space (MiB)" hint="0 = unlimited."><input className="input" type="number" min={0} value={form.disk_mb} onChange={(e) => setForm({ ...form, disk_mb: +e.target.value })} /></Field>
-            <Field label="Block IO Weight" hint="10-1000. IO priority relative to other containers."><input className="input" type="number" min={10} max={1000} value={form.io} onChange={(e) => setForm({ ...form, io: +e.target.value })} /></Field>
+            <Field label="Memory (MiB)" hint="Maximum RAM for this container. 0 = unlimited."><NumberInput min={0} value={form.memory_mb} onChange={(n) => setForm({ ...form, memory_mb: n })} /></Field>
+            <Field label="Swap (MiB)" hint="-1 = unlimited, 0 = disabled."><NumberInput value={form.swap_mb} onChange={(n) => setForm({ ...form, swap_mb: n })} /></Field>
+            <Field label="Disk Space (MiB)" hint="0 = unlimited."><NumberInput min={0} value={form.disk_mb} onChange={(n) => setForm({ ...form, disk_mb: n })} /></Field>
+            <Field label="Block IO Weight" hint="10-1000. IO priority relative to other containers."><NumberInput min={10} max={1000} value={form.io} onChange={(n) => setForm({ ...form, io: n })} /></Field>
           </div>
           <Toggle label="Enable OOM Killer" checked={form.oom_killer} onChange={(v) => setForm({ ...form, oom_killer: v })} hint="Terminates the server if it breaches memory limits." />
         </div>
@@ -303,9 +304,7 @@ function AssignModal({ server, onAssign, onCancel }) {
   const [searching, setSearching] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  async function doSearch(q) {
-    setSearch(q);
-    setSelected(null);
+  async function runSearch(q) {
     if (q.trim().length < 3) { setResults([]); return; }
     setSearching(true);
     try {
@@ -316,6 +315,13 @@ function AssignModal({ server, onAssign, onCancel }) {
     } finally {
       setSearching(false);
     }
+  }
+  const debouncedSearch = useDebouncedCallback(runSearch, 300);
+
+  function doSearch(q) {
+    setSearch(q);
+    setSelected(null);
+    debouncedSearch(q);
   }
 
   function pickUser(u) {
@@ -347,6 +353,7 @@ function AssignModal({ server, onAssign, onCancel }) {
               value={search}
               onChange={(e) => doSearch(e.target.value)}
               placeholder="Search username or email (min 3 chars)"
+              autoComplete="off"
               required
             />
             {searching && <p className="mt-1 text-xs text-zinc-500">Searching…</p>}
@@ -435,15 +442,23 @@ export default function Servers() {
   }
 
   async function toggleSuspend(s) {
-    if (s.status === 'suspended') await api.admin.unsuspendServer(s.id);
-    else await api.admin.suspendServer(s.id);
-    load(search);
+    try {
+      if (s.status === 'suspended') await api.admin.unsuspendServer(s.id);
+      else await api.admin.suspendServer(s.id);
+      load(search);
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   async function remove(s) {
     if (!confirm(`Delete server ${s.name}? This permanently deletes all its files.`)) return;
-    await api.admin.deleteServer(s.id);
-    load(search);
+    try {
+      await api.admin.deleteServer(s.id);
+      load(search);
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   return (

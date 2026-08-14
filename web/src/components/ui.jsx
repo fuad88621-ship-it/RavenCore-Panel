@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { motion, useSpring, useTransform } from 'framer-motion';
-import { NavLink, useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 
 export const ToastContext = createContext(null);
@@ -24,9 +23,19 @@ export function AuroraBackground({ children }) {
 export function CursorGlow() {
   const [pos, setPos] = useState({ x: 0, y: 0 });
   useEffect(() => {
-    const onMove = (e) => setPos({ x: e.clientX, y: e.clientY });
+    let raf;
+    const onMove = (e) => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        setPos({ x: e.clientX, y: e.clientY });
+      });
+    };
     window.addEventListener('pointermove', onMove);
-    return () => window.removeEventListener('pointermove', onMove);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, []);
   return (
     <div
@@ -40,15 +49,18 @@ export function CursorGlow() {
 }
 
 export function ParticlesBackground() {
-  const count = 24;
-  const particles = Array.from({ length: count }, (_, i) => ({
-    id: i,
-    left: `${Math.random() * 100}%`,
-    top: `${Math.random() * 100}%`,
-    size: Math.random() * 2 + 1,
-    delay: Math.random() * 5,
-    duration: Math.random() * 10 + 10,
-  }));
+  // Build particles once so re-renders don't re-randomize positions.
+  const particles = React.useMemo(() => {
+    const count = 24;
+    return Array.from({ length: count }, (_, i) => ({
+      id: i,
+      left: `${Math.random() * 100}%`,
+      top: `${Math.random() * 100}%`,
+      size: Math.random() * 2 + 1,
+      delay: Math.random() * 5,
+      duration: Math.random() * 10 + 10,
+    }));
+  }, []);
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden opacity-40">
       {particles.map((p) => (
@@ -119,12 +131,20 @@ export function ShineCard({ children, className, delay = 0 }) {
 
 export function SpotlightCard({ children, className, delay = 0 }) {
   const ref = React.useRef(null);
+  const raf = React.useRef(null);
   function onMouseMove(e) {
     if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    ref.current.style.setProperty('--spotlight-x', `${e.clientX - rect.left}px`);
-    ref.current.style.setProperty('--spotlight-y', `${e.clientY - rect.top}px`);
+    if (raf.current) return;
+    raf.current = requestAnimationFrame(() => {
+      raf.current = null;
+      const rect = ref.current.getBoundingClientRect();
+      ref.current.style.setProperty('--spotlight-x', `${e.clientX - rect.left}px`);
+      ref.current.style.setProperty('--spotlight-y', `${e.clientY - rect.top}px`);
+    });
   }
+  React.useEffect(() => () => {
+    if (raf.current) cancelAnimationFrame(raf.current);
+  }, []);
   return (
     <motion.div
       ref={ref}
@@ -145,21 +165,6 @@ export function SpotlightCard({ children, className, delay = 0 }) {
     </motion.div>
   );
 }
-
-export function GradientBorder({ children, className, active = false }) {
-  return (
-    <div
-      className={cn(
-        'relative rounded-2xl p-[1px] before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-br before:from-violet-500/40 before:via-white/10 before:to-fuchsia-500/40 before:transition-opacity',
-        active ? 'before:opacity-100' : 'before:opacity-0 hover:before:opacity-100',
-        className
-      )}
-    >
-      <div className="relative h-full rounded-2xl bg-[#0c0c10]/90">{children}</div>
-    </div>
-  );
-}
-
 // ── Stat card ────────────────────────────────────────────────
 export function StatCard({ label, value, total, suffix, decimals = 0, icon, delay = 0, color = 'violet' }) {
   const numericValue = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.]/g, '')) || 0 : value;
@@ -299,13 +304,21 @@ export function StatusBadge({ status }) {
 }
 
 // ── Custom select ────────────────────────────────────────────
-export function Select({ value, onChange, children, className, disabled }) {
+export function Select({ value, onChange, children, className, disabled, id, label }) {
   const [open, setOpen] = useState(false);
   const ref = React.useRef(null);
 
   useEffect(() => {
     function onClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    if (open) { document.addEventListener('mousedown', onClick); return () => document.removeEventListener('mousedown', onClick); }
+    function onKey(e) { if (e.key === 'Escape') setOpen(false); }
+    if (open) {
+      document.addEventListener('mousedown', onClick);
+      document.addEventListener('keydown', onKey);
+      return () => {
+        document.removeEventListener('mousedown', onClick);
+        document.removeEventListener('keydown', onKey);
+      };
+    }
   }, [open]);
 
   const options = React.Children.toArray(children).filter((c) => c.type === 'option');
@@ -313,8 +326,14 @@ export function Select({ value, onChange, children, className, disabled }) {
 
   return (
     <div ref={ref} className={cn('relative', className)}>
+      {label && <label htmlFor={id} className="sr-only">{label}</label>}
       <button
         type="button"
+        id={id}
+        role="combobox"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-label={label}
         onClick={() => !disabled && setOpen(!open)}
         className={cn(
           'input flex w-full items-center justify-between text-left',
@@ -327,20 +346,25 @@ export function Select({ value, onChange, children, className, disabled }) {
         </svg>
       </button>
       {open && (
-        <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-white/[0.08] bg-[#0c0c10] py-1 shadow-2xl">
-          {options.map((opt) => (
-            <button
-              key={String(opt.props.value ?? '') + '-' + String(opt.props.children)}
-              type="button"
-              onClick={() => { onChange({ target: { value: opt.props.value } }); setOpen(false); }}
-              className={cn(
-                'block w-full px-4 py-2 text-left text-sm transition-colors',
-                String(opt.props.value ?? '') === String(value ?? '') ? 'bg-violet-500/15 text-violet-200' : 'text-zinc-300 hover:bg-white/[0.05] hover:text-white'
-              )}
-            >
-              {opt.props.children}
-            </button>
-          ))}
+        <div role="listbox" className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-white/[0.08] bg-[#0c0c10] py-1 shadow-2xl">
+          {options.map((opt) => {
+            const isSelected = String(opt.props.value ?? '') === String(value ?? '');
+            return (
+              <button
+                key={String(opt.props.value ?? '') + '-' + String(opt.props.children)}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => { onChange({ target: { value: opt.props.value } }); setOpen(false); }}
+                className={cn(
+                  'block w-full px-4 py-2 text-left text-sm transition-colors',
+                  isSelected ? 'bg-violet-500/15 text-violet-200' : 'text-zinc-300 hover:bg-white/[0.05] hover:text-white'
+                )}
+              >
+                {opt.props.children}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -354,7 +378,15 @@ export function MultiSelect({ value = [], onChange, children, placeholder = 'Sel
 
   useEffect(() => {
     function onClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    if (open) { document.addEventListener('mousedown', onClick); return () => document.removeEventListener('mousedown', onClick); }
+    function onKey(e) { if (e.key === 'Escape') setOpen(false); }
+    if (open) {
+      document.addEventListener('mousedown', onClick);
+      document.addEventListener('keydown', onKey);
+      return () => {
+        document.removeEventListener('mousedown', onClick);
+        document.removeEventListener('keydown', onKey);
+      };
+    }
   }, [open]);
 
   const options = React.Children.toArray(children).filter((c) => c.type === 'option');
@@ -372,6 +404,9 @@ export function MultiSelect({ value = [], onChange, children, placeholder = 'Sel
     <div ref={ref} className={cn('relative', className)}>
       <button
         type="button"
+        role="combobox"
+        aria-expanded={open}
+        aria-haspopup="listbox"
         onClick={() => !disabled && setOpen(!open)}
         className={cn(
           'input flex w-full items-center justify-between text-left',
@@ -386,13 +421,15 @@ export function MultiSelect({ value = [], onChange, children, placeholder = 'Sel
         </svg>
       </button>
       {open && (
-        <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-white/[0.08] bg-[#0c0c10] py-1 shadow-2xl">
+        <div role="listbox" className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-white/[0.08] bg-[#0c0c10] py-1 shadow-2xl">
           {options.map((opt) => {
             const selected = selectedSet.has(String(opt.props.value ?? ''));
             return (
               <button
                 key={String(opt.props.value ?? '') + '-' + String(opt.props.children)}
                 type="button"
+                role="option"
+                aria-selected={selected}
                 onClick={() => toggle(opt.props.value)}
                 className={cn(
                   'flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors',
@@ -477,94 +514,23 @@ export function Toasts({ toasts, onDismiss }) {
 
 export function useToasts() {
   const [toasts, setToasts] = useState([]);
+  const timers = React.useRef([]);
+
+  useEffect(() => () => {
+    timers.current.forEach((t) => clearTimeout(t));
+  }, []);
+
   const push = (message, type = 'success') => {
     const id = Math.random().toString(36).slice(2);
     setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000);
+    const timer = setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+      timers.current = timers.current.filter((t) => t !== timer);
+    }, 4000);
+    timers.current.push(timer);
   };
   const dismiss = (id) => setToasts((prev) => prev.filter((t) => t.id !== id));
   return { toasts, push, dismiss };
-}
-
-// ── Mobile navigation menu ───────────────────────────────────
-export function MobileMenu({ nav, user, onLogout, open, onClose, title = 'Panel' }) {
-  const navigate = useNavigate();
-  if (!open) return null;
-  return (
-    <>
-      <div className="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm lg:hidden" onClick={onClose} />
-      <motion.div
-        initial={{ x: '-100%' }}
-        animate={{ x: 0 }}
-        exit={{ x: '-100%' }}
-        transition={{ type: 'tween', duration: 0.2 }}
-        className="fixed inset-y-0 left-0 z-40 w-[280px] border-r border-white/[0.05] bg-[#08080a]/95 backdrop-blur-2xl lg:hidden"
-      >
-        <div className="flex items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 ring-1 ring-white/10">
-              <svg viewBox="0 0 24 24" className="h-5 w-5 text-violet-300" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="4" width="18" height="7" rx="1.5" />
-                <rect x="3" y="13" width="18" height="7" rx="1.5" />
-                <path d="M7 7.5h.01M7 16.5h.01" strokeWidth={2.4} />
-              </svg>
-            </span>
-            <div>
-              <p className="font-bold text-white leading-tight">{title}</p>
-              <p className="text-xs text-zinc-600">Cloud Platform</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-2 text-zinc-400 hover:text-white">
-            <Icons.Close className="h-5 w-5" />
-          </button>
-        </div>
-        <nav className="space-y-0.5 px-3 py-2">
-          {nav.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              end={n.end}
-              onClick={onClose}
-              className={({ isActive }) =>
-                cn(
-                  'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all',
-                  isActive ? 'text-white' : 'text-zinc-400 hover:text-zinc-100'
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && <motion.span layoutId="active-nav-pill-mobile" className="absolute inset-0 rounded-xl border border-violet-500/25 bg-violet-500/[0.12] shadow-[0_0_20px_rgb(139_92_246/0.12)]" />}
-                  <span className={cn('relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors', isActive ? 'bg-violet-500/20 text-violet-300' : 'bg-white/[0.03] text-zinc-400 group-hover:text-zinc-200')}>
-                    {n.icon}
-                  </span>
-                  <span className="relative">{n.label}</span>
-                </>
-              )}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="absolute bottom-0 left-0 right-0 border-t border-white/[0.06] p-4">
-          <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-violet-500/30 to-fuchsia-500/10 text-sm font-bold text-violet-200 ring-1 ring-white/10">
-              {user?.username?.[0]?.toUpperCase() || 'R'}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-white">{user?.username}</p>
-              <p className="text-xs uppercase tracking-wide text-violet-300/80">{user?.root_admin ? 'Admin' : 'User'}</p>
-            </div>
-            <button
-              onClick={async () => { await api.logout(); onLogout(); navigate('/login'); onClose(); }}
-              className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-2 text-zinc-500 hover:text-red-400 transition-colors"
-              title="Logout"
-            >
-              <Icons.Logout className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </motion.div>
-    </>
-  );
 }
 
 // ── Error boundary ───────────────────────────────────────────
@@ -577,7 +543,7 @@ export class ErrorBoundary extends React.Component {
     return { hasError: true, error };
   }
   componentDidCatch(error, info) {
-    console.error('[ErrorBoundary]', error, info);
+    if (process.env.NODE_ENV !== 'production') console.error('[ErrorBoundary]', error, info);
   }
   render() {
     if (this.state.hasError) {

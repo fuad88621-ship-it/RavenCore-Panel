@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation, NavLink, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from './api.js';
@@ -11,7 +11,6 @@ import Admin from './pages/admin/Admin.jsx';
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
-export { useToasts as useToast };
 
 const SettingsContext = createContext({});
 export const useSettings = () => useContext(SettingsContext);
@@ -19,13 +18,14 @@ export const useSettings = () => useContext(SettingsContext);
 function Logo({ size = 36 }) {
   const settings = useSettings();
   const logoUrl = settings['panel.logo_url'];
+  const safeLogo = logoUrl && /^(https?:|\/)/.test(logoUrl) ? logoUrl : null;
   return (
     <span
       className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 ring-1 ring-white/10"
       style={{ width: size, height: size }}
     >
-      {logoUrl ? (
-        <img src={logoUrl} alt="" className="h-full w-full object-contain p-1" />
+      {safeLogo ? (
+        <img src={safeLogo} alt="" className="h-full w-full object-contain p-1" />
       ) : (
         <Icons.Server className="h-5 w-5 text-violet-300" />
       )}
@@ -139,7 +139,7 @@ function Sidebar({ user, onLogout, nav }) {
 
       {/* Sign out */}
       <button
-        onClick={async () => { await api.logout(); onLogout(); navigate('/login'); }}
+        onClick={async () => { try { await api.logout(); } catch {} onLogout(); navigate('/login'); }}
         className="mt-4 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-zinc-400 transition-all hover:bg-white/[0.04] hover:text-red-300"
       >
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.03]">
@@ -254,7 +254,7 @@ function MobileNav({ user, onLogout, nav }) {
               </nav>
 
               <button
-                onClick={async () => { await api.logout(); onLogout(); navigate('/login'); setOpen(false); }}
+                onClick={async () => { try { await api.logout(); } catch {} onLogout(); navigate('/login'); setOpen(false); }}
                 className="mt-6 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-zinc-400 transition-all hover:bg-white/[0.04] hover:text-red-300"
               >
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.03]">
@@ -409,7 +409,7 @@ export default function App() {
     document.documentElement.style.setProperty('--raven-primary', primary);
     document.documentElement.style.setProperty('--raven-accent', accent);
     const favicon = settings['panel.favicon_url'];
-    if (favicon) {
+    if (favicon && /^(https?:|\/)/.test(favicon)) {
       let link = document.querySelector("link[rel~='icon']");
       if (!link) {
         link = document.createElement('link');
@@ -422,32 +422,16 @@ export default function App() {
     if (name) document.title = name;
   }, [settings]);
 
-  // Strip leading zeros from number inputs so users can type e.g. 19 instead of getting 019.
-  useEffect(() => {
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-    function onInput(e) {
-      const el = e.target;
-      if (el.type !== 'number') return;
-      const val = el.value;
-      if (val.length > 1 && val.startsWith('0') && !val.startsWith('0.')) {
-        const next = String(parseInt(val, 10));
-        setter.call(el, next);
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-    }
-    document.addEventListener('input', onInput);
-    return () => document.removeEventListener('input', onInput);
-  }, []);
-
   const logout = () => setUser(null);
+  const authValue = useMemo(() => ({ user, setUser, logout, loading }), [user, loading]);
   const location = useLocation();
 
   return (
     <ToastContext.Provider value={toastApi}>
-      <AuthContext.Provider value={{ user, setUser, logout, loading }}>
+      <AuthContext.Provider value={authValue}>
         <SettingsContext.Provider value={settings}>
           <AnimatePresence mode="wait">
-            <Routes location={location} key={location.pathname}>
+            <Routes location={location}>
               <Route path="/login" element={<AuthLayout><Login /></AuthLayout>} />
               <Route path="/register" element={<AuthLayout><Register /></AuthLayout>} />
               <Route path="/" element={<Protected><Dashboard /></Protected>} />

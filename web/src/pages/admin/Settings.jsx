@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../../api.js';
 import { Card, Icons, SectionHeader, Select } from '../../components/ui.jsx';
 
@@ -31,6 +31,11 @@ export default function Settings() {
   const [backups, setBackups] = useState([]);
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupError, setBackupError] = useState('');
+  const savedTimer = useRef(null);
+
+  useEffect(() => () => {
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+  }, []);
 
   useEffect(() => {
     api.admin.settings().then((d) => setSettings(d.settings)).catch((e) => setError(e.message));
@@ -63,7 +68,8 @@ export default function Settings() {
     try {
       await api.admin.updateSettings(settings);
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+      savedTimer.current = setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       setError(e.message);
     }

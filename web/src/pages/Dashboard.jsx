@@ -151,6 +151,8 @@ function QuickActionCard({ to, title, desc, icon, gradient }) {
 const QUICK_ACTIONS = [
   { to: '/#servers', title: 'Servers', desc: 'Manage your servers', gradient: 'from-emerald-500/30 to-teal-500/15', icon: SlotIcon },
   { to: '/admin/settings', title: 'Settings', desc: 'Panel configuration', gradient: 'from-amber-500/25 to-orange-500/10', icon: Icons.Gear({ className: 'h-5 w-5' }) },
+  { to: '/admin/nodes', title: 'Nodes', desc: 'Manage nodes & allocations', gradient: 'from-sky-500/25 to-blue-500/10', icon: Icons.Node({ className: 'h-5 w-5' }) },
+  { to: '/admin/users', title: 'Users', desc: 'Manage accounts', gradient: 'from-fuchsia-500/25 to-purple-500/10', icon: Icons.Users({ className: 'h-5 w-5' }) },
 ];
 
 const PAGE_SIZE = 24;
@@ -175,11 +177,13 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (tab !== 'shared' || sharedServers.length > 0) return;
+    if (tab !== 'shared') return;
+    let cancelled = false;
     api.sharedServers()
-      .then((d) => setSharedServers(d.servers))
-      .catch((e) => setError(e.message));
-  }, [tab, sharedServers.length]);
+      .then((d) => { if (!cancelled) setSharedServers(d.servers); })
+      .catch((e) => { if (!cancelled) setError(e.message); });
+    return () => { cancelled = true; };
+  }, [tab]);
 
   // Scroll to hash anchor once data has loaded.
   useEffect(() => {
@@ -306,7 +310,7 @@ export default function Dashboard() {
           <>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {visibleServers.map((s, i) => (
-                <motion.div key={s.id} initial={{ opacity: 0, y: 16, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.4, delay: Math.min(i, 24) * 0.03, ease: [0.22, 1, 0.36, 1] }}>
+                <motion.div key={s.id} initial={{ opacity: 0, y: 16, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.4, delay: Math.min(i, 12) * 0.03, ease: [0.22, 1, 0.36, 1] }}>
                   <ServerCard server={s} />
                 </motion.div>
               ))}
