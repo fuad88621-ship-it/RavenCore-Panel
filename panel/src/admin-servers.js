@@ -30,7 +30,7 @@ async function getServerWithDetails(id) {
             e.default_install_command AS egg_install, e.skip_install AS egg_skip_install,
             nest.name AS nest_name
      FROM servers s
-     JOIN users u ON u.id = s.user_id
+     LEFT JOIN users u ON u.id = s.user_id
      JOIN nodes n ON n.id = s.node_id
      JOIN eggs e ON e.id = s.egg_id
      JOIN nests nest ON nest.id = s.nest_id
@@ -48,7 +48,7 @@ export async function adminServerRoutes(fastify) {
       servers = await q(
         `SELECT s.*, u.username AS owner_username, n.name AS node_name, e.name AS egg_name
          FROM servers s
-         JOIN users u ON u.id = s.user_id
+         LEFT JOIN users u ON u.id = s.user_id
          JOIN nodes n ON n.id = s.node_id
          JOIN eggs e ON e.id = s.egg_id
          WHERE s.name ILIKE $1 OR s.identifier ILIKE $1 OR u.username ILIKE $1 OR u.email ILIKE $1
@@ -59,7 +59,7 @@ export async function adminServerRoutes(fastify) {
       servers = await q(
         `SELECT s.*, u.username AS owner_username, n.name AS node_name, e.name AS egg_name
          FROM servers s
-         JOIN users u ON u.id = s.user_id
+         LEFT JOIN users u ON u.id = s.user_id
          JOIN nodes n ON n.id = s.node_id
          JOIN eggs e ON e.id = s.egg_id
          ORDER BY s.created_at DESC LIMIT 100`
@@ -90,13 +90,13 @@ export async function adminServerRoutes(fastify) {
       default_allocation_id, additional_allocation_ids,
     } = req.body || {};
 
-    if (!user_id || !egg_id || !name) {
-      return reply.code(400).send({ error: 'user_id, egg_id and name are required' });
+    if (!egg_id || !name) {
+      return reply.code(400).send({ error: 'egg_id and name are required' });
     }
 
-    const user = await q1(`SELECT * FROM users WHERE id = $1`, [user_id]);
+    const user = user_id ? await q1(`SELECT * FROM users WHERE id = $1`, [user_id]) : null;
     const egg = await q1(`SELECT * FROM eggs WHERE id = $1`, [egg_id]);
-    if (!user) return reply.code(400).send({ error: 'User not found' });
+    if (user_id && !user) return reply.code(400).send({ error: 'User not found' });
     if (!egg) return reply.code(400).send({ error: 'Egg not found' });
 
     // Auto-deploy: pick the best node if none specified
@@ -168,7 +168,7 @@ export async function adminServerRoutes(fastify) {
         startup_command, docker_image, skip_install, start_on_install, env, sftp_password)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'installing',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
        RETURNING *`,
-      [uuid, identifier, name, description || '', user.id, node.id, egg.nest_id, egg.id,
+      [uuid, identifier, name, description || '', user?.id || null, node.id, egg.nest_id, egg.id,
        mem, cpuPct, cpu_pinning || '', disk, swap, ioVal, oom_killer !== false, dbCount, allocCount, backupCount,
        finalStartup, finalImage, !!skip_install, !!start_on_install, JSON.stringify(mergedEnv), sftpPassword]
     );
@@ -230,6 +230,18 @@ export async function adminServerRoutes(fastify) {
     await logActivity(server.id, req.user.id, 'server.create', { name: server.name });
 
     return reply.code(201).send({ server });
+  });
+
+  // Assign an unassigned server to a user
+  fastify.patch('/api/admin/servers/:id/assign', { preHandler: requireAdmin }, async (req, reply) => {
+    const { user_id } = req.body || {};
+    if (!user_id) return reply.code(400).send({ error: 'user_id is required' });
+    const user = await q1(`SELECT * FROM users WHERE id = $1`, [user_id]);
+    if (!user) return reply.code(404).send({ error: 'User not found' });
+    const server = await q1(`UPDATE servers SET user_id = $1 WHERE id = $2 RETURNING *`, [user_id, req.params.id]);
+    if (!server) return reply.code(404).send({ error: 'Server not found' });
+    await logActivity(server.id, req.user.id, 'server.assign', { to_user_id: user_id, to_username: user.username });
+    return { server };
   });
 
   // Update server

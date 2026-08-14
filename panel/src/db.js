@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS servers (
   identifier TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   node_id UUID NOT NULL REFERENCES nodes(id),
   nest_id UUID NOT NULL REFERENCES nests(id),
   egg_id UUID NOT NULL REFERENCES eggs(id),
@@ -228,6 +228,7 @@ CREATE TABLE IF NOT EXISTS settings (
 export async function initDb() {
   await pool.query(SCHEMA);
   // Migrations for existing tables
+  await pool.query(`ALTER TABLE servers ALTER COLUMN user_id DROP NOT NULL`);
   await pool.query(`ALTER TABLE servers ADD COLUMN IF NOT EXISTS sftp_password TEXT`);
   await pool.query(`ALTER TABLE servers ADD COLUMN IF NOT EXISTS cpu_pinning TEXT DEFAULT ''`);
   await pool.query(`ALTER TABLE servers ADD COLUMN IF NOT EXISTS oom_killer BOOLEAN DEFAULT true`);

@@ -49,7 +49,6 @@ function CreateServerForm({ onCreated }) {
   useEffect(() => {
     Promise.all([api.admin.users(), api.admin.nodes(), api.admin.nests()]).then(([u, n, ne]) => {
       setUsers(u.users); setNodes(n.nodes); setNests(ne.nests);
-      if (u.users[0]) setForm((f) => ({ ...f, user_id: u.users[0].id }));
       if (n.nodes[0]) setForm((f) => ({ ...f, node_id: n.nodes[0].id }));
       if (ne.nests[0]) setForm((f) => ({ ...f, nest_id: ne.nests[0].id }));
     }).catch((e) => setError(e.message));
@@ -127,8 +126,9 @@ function CreateServerForm({ onCreated }) {
           <h3 className="font-semibold text-white">Basic Details</h3>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Server Name"><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></Field>
-            <Field label="Server Owner (email)">
+            <Field label="Server Owner" hint="Leave unassigned to create inventory/pre-made servers.">
               <Select value={form.user_id} onChange={(e) => setForm({ ...form, user_id: e.target.value })}>
+                <option value="">— Unassigned —</option>
                 {users.map((u) => <option key={u.id} value={u.id}>{u.username} — {u.email}</option>)}
               </Select>
             </Field>
@@ -250,22 +250,70 @@ function CreateServerForm({ onCreated }) {
   );
 }
 
+function AssignModal({ server, users, onAssign, onCancel }) {
+  const [userId, setUserId] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!userId) return;
+    setBusy(true);
+    try {
+      await onAssign(server.id, userId);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onCancel}>
+      <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-4 font-semibold text-white">Assign server</h3>
+        <p className="mb-4 text-sm text-zinc-400">Choose a new owner for <b className="text-white">{server.name}</b>.</p>
+        <form onSubmit={submit} className="space-y-4">
+          <Select value={userId} onChange={(e) => setUserId(e.target.value)} required>
+            <option value="">— Select user —</option>
+            {users.map((u) => <option key={u.id} value={u.id}>{u.username} — {u.email}</option>)}
+          </Select>
+          <div className="flex gap-2">
+            <button className="btn-primary flex-1" disabled={busy}>{busy ? 'Assigning…' : 'Assign'}</button>
+            <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
+          </div>
+        </form>
+      </Card>
+    </div>
+  );
+}
+
 export default function Servers() {
   const [servers, setServers] = useState([]);
+  const [users, setUsers] = useState([]);
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [assigning, setAssigning] = useState(null);
   const [error, setError] = useState('');
 
   async function load(s) {
     try {
-      const d = await api.admin.servers(s);
+      const [d, u] = await Promise.all([api.admin.servers(s), api.admin.users()]);
       setServers(d.servers);
+      setUsers(u.users);
     } catch (e) {
       setError(e.message);
     }
   }
 
   useEffect(() => { load(); }, []);
+
+  async function assignServer(serverId, userId) {
+    try {
+      await api.admin.assignServer(serverId, userId);
+      setAssigning(null);
+      load(search);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
 
   async function power(id, action) {
     try {
@@ -296,6 +344,15 @@ export default function Servers() {
         action={<GlowButton onClick={() => setShowCreate(!showCreate)}><Icons.Plus className="h-4 w-4" /> New Server</GlowButton>}
       />
       {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+
+      {assigning && (
+        <AssignModal
+          server={assigning}
+          users={users}
+          onAssign={assignServer}
+          onCancel={() => setAssigning(null)}
+        />
+      )}
 
       {showCreate && (
         <div className="mb-6">
@@ -338,16 +395,25 @@ export default function Servers() {
                   <p className="font-medium text-white">{s.name}</p>
                   <p className="font-mono text-xs text-zinc-500">{s.identifier}</p>
                 </td>
-                <td className="px-4 py-3 text-zinc-400">{s.owner_username}</td>
+                <td className="px-4 py-3">
+                  {s.owner_username ? (
+                    <span className="text-zinc-400">{s.owner_username}</span>
+                  ) : (
+                    <span className="chip bg-amber-500/10 text-amber-300 border border-amber-500/20">Unassigned</span>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-zinc-400">{s.egg_name}</td>
                 <td className="px-4 py-3 text-zinc-400">{s.node_name}</td>
                 <td className="px-4 py-3 text-xs text-zinc-400">{s.memory_mb}MB · {s.cpu}% · {s.disk_mb}MB</td>
                 <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
+                  {!s.owner_username && (
+                    <button className="btn-primary !px-2 !py-1 text-xs mr-1" onClick={() => setAssigning(s)}>Assign</button>
+                  )}
                   {s.status === 'running' ? (
                     <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => power(s.id, 'stop')}>Stop</button>
                   ) : (
-                    <button className="btn-primary !px-2 !py-1 text-xs mr-1" onClick={() => power(s.id, 'start')} disabled={s.status === 'installing'}>Start</button>
+                    <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => power(s.id, 'start')} disabled={s.status === 'installing'}>Start</button>
                   )}
                   <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => toggleSuspend(s)}>{s.status === 'suspended' ? 'Unsuspend' : 'Suspend'}</button>
                   <button className="btn-danger !px-2 !py-1 text-xs" onClick={() => remove(s)}>Delete</button>

@@ -87,6 +87,7 @@ export const api = {
     servers: (search) => req(`/api/admin/servers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
     server: (id) => req(`/api/admin/servers/${id}`),
     createServer: (body) => req('/api/admin/servers', { method: 'POST', body: JSON.stringify(body) }),
+    assignServer: (id, userId) => req(`/api/admin/servers/${id}/assign`, { method: 'PATCH', body: JSON.stringify({ user_id: userId }) }),
     updateServer: (id, body) => req(`/api/admin/servers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     deleteServer: (id) => req(`/api/admin/servers/${id}`, { method: 'DELETE' }),
     serverPower: (id, action) => req(`/api/admin/servers/${id}/power`, { method: 'POST', body: JSON.stringify({ action }) }),
