@@ -108,7 +108,10 @@ const ServerCard = React.memo(function ServerCard({ server }) {
             </span>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-white transition group-hover:text-violet-200">{server.name}</p>
-              <p className="text-[11px] text-zinc-500">{server.egg_name || 'Server'}</p>
+              <p className="text-[11px] text-zinc-500">
+                {server.egg_name || 'Server'}
+                {server.owner_username && <span className="ml-1.5 text-zinc-600">· {server.owner_username}</span>}
+              </p>
             </div>
           </div>
           <StatusBadge status={status} />
@@ -155,7 +158,9 @@ const PAGE_SIZE = 24;
 export default function Dashboard() {
   const { user } = useAuth();
   const location = useLocation();
-  const [servers, setServers] = useState([]);
+  const [tab, setTab] = useState('mine');
+  const [myServers, setMyServers] = useState([]);
+  const [sharedServers, setSharedServers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -163,8 +168,18 @@ export default function Dashboard() {
   const toast = useToast();
 
   useEffect(() => {
-    api.servers().then((d) => setServers(d.servers)).catch((e) => setError(e.message)).finally(() => setLoading(false));
+    api.servers()
+      .then((d) => setMyServers(d.servers))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (tab !== 'shared' || sharedServers.length > 0) return;
+    api.sharedServers()
+      .then((d) => setSharedServers(d.servers))
+      .catch((e) => setError(e.message));
+  }, [tab, sharedServers.length]);
 
   // Scroll to hash anchor once data has loaded.
   useEffect(() => {
@@ -175,13 +190,16 @@ export default function Dashboard() {
     }
   }, [loading, location.hash]);
 
+  const servers = tab === 'mine' ? myServers : sharedServers;
+
   const filteredServers = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return servers;
     return servers.filter((s) =>
       (s.name || '').toLowerCase().includes(q) ||
       (s.egg_name || '').toLowerCase().includes(q) ||
-      (s.identifier || '').toLowerCase().includes(q)
+      (s.identifier || '').toLowerCase().includes(q) ||
+      (s.owner_username || '').toLowerCase().includes(q)
     );
   }, [servers, search]);
 
@@ -247,21 +265,41 @@ export default function Dashboard() {
       <section id="servers" className="space-y-5 scroll-mt-24">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <SectionHeader title="Servers" />
-          {servers.length > 0 && (
-            <div className="relative max-w-xs">
-              <Icons.Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-              <input
-                className="input !pl-9"
-                placeholder="Search servers…"
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setVisibleCount(PAGE_SIZE); }}
-              />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-center rounded-xl border border-white/[0.06] bg-white/[0.03] p-1">
+              <button
+                onClick={() => { setTab('mine'); setSearch(''); setVisibleCount(PAGE_SIZE); }}
+                className={cn('rounded-lg px-3 py-1.5 text-xs font-medium transition', tab === 'mine' ? 'bg-violet-500/15 text-violet-200' : 'text-zinc-400 hover:text-zinc-200')}
+              >
+                My servers
+              </button>
+              <button
+                onClick={() => { setTab('shared'); setSearch(''); setVisibleCount(PAGE_SIZE); }}
+                className={cn('rounded-lg px-3 py-1.5 text-xs font-medium transition', tab === 'shared' ? 'bg-violet-500/15 text-violet-200' : 'text-zinc-400 hover:text-zinc-200')}
+              >
+                {user?.root_admin ? 'All servers' : 'Shared with me'}
+              </button>
             </div>
-          )}
+            {servers.length > 0 && (
+              <div className="relative max-w-xs">
+                <Icons.Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                <input
+                  className="input !pl-9"
+                  placeholder="Search servers…"
+                  value={search}
+                  onChange={(e) => { setSearch(e.target.value); setVisibleCount(PAGE_SIZE); }}
+                />
+              </div>
+            )}
+          </div>
         </div>
         {error && <p className="text-sm text-red-400">{error}</p>}
         {servers.length === 0 ? (
-          <EmptyState icon={<Icons.Server className="h-12 w-12 text-zinc-500" />} title="No servers yet" sub="Ask your host to create a server for you." />
+          <EmptyState
+            icon={<Icons.Server className="h-12 w-12 text-zinc-500" />}
+            title={tab === 'mine' ? 'No servers yet' : user?.root_admin ? 'No other servers' : 'No shared servers'}
+            sub={tab === 'mine' ? 'Ask your host to create a server for you.' : user?.root_admin ? 'You own every server on the panel.' : 'You have not been added as a sub-user to any server.'}
+          />
         ) : filteredServers.length === 0 ? (
           <EmptyState icon={<Icons.Search className="h-12 w-12 text-zinc-500" />} title="No matches" sub={`No servers match "${search}".`} />
         ) : (

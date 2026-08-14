@@ -24,6 +24,7 @@ export const api = {
 
   // ── Client area ──────────────────────────────────────────
   servers: () => req('/api/client/servers'),
+  sharedServers: () => req('/api/client/servers/shared'),
   server: (id) => req(`/api/client/servers/${id}`),
   power: (id, action) => req(`/api/client/servers/${id}/power`, { method: 'POST', body: JSON.stringify({ action }) }),
   command: (id, command) => req(`/api/client/servers/${id}/command`, { method: 'POST', body: JSON.stringify({ command }) }),

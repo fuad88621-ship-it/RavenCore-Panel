@@ -58,6 +58,37 @@ export async function clientRoutes(fastify) {
     return { servers };
   });
 
+  // List servers shared with me (sub-user) or, for admins, all other users' servers
+  fastify.get('/api/client/servers/shared', { preHandler: requireAuth }, async (req) => {
+    if (req.user.root_admin) {
+      const servers = await q(
+        `SELECT s.id, s.uuid, s.identifier, s.name, s.description, s.status, s.memory_mb, s.cpu, s.disk_mb,
+                e.name AS egg_name, n.name AS node_name, u.username AS owner_username
+         FROM servers s
+         JOIN eggs e ON e.id = s.egg_id
+         JOIN nodes n ON n.id = s.node_id
+         JOIN users u ON u.id = s.user_id
+         WHERE s.user_id != $1
+         ORDER BY s.created_at DESC`,
+        [req.user.id]
+      );
+      return { servers };
+    }
+    const servers = await q(
+      `SELECT s.id, s.uuid, s.identifier, s.name, s.description, s.status, s.memory_mb, s.cpu, s.disk_mb,
+              e.name AS egg_name, n.name AS node_name, u.username AS owner_username
+       FROM servers s
+       JOIN eggs e ON e.id = s.egg_id
+       JOIN nodes n ON n.id = s.node_id
+       JOIN server_subusers su ON su.server_id = s.id
+       JOIN users u ON u.id = s.user_id
+       WHERE su.user_id = $1
+       ORDER BY s.created_at DESC`,
+      [req.user.id]
+    );
+    return { servers };
+  });
+
   // Server detail
   fastify.get('/api/client/servers/:id', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
