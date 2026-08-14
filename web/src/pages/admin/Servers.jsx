@@ -356,8 +356,8 @@ function AssignModal({ server, onAssign, onCancel }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onCancel}>
-      <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
         <h3 className="mb-4 font-semibold text-white">Assign server</h3>
         <p className="mb-4 text-sm text-zinc-400">Choose a new owner for <b className="text-white">{server.name}</b>.</p>
         <form onSubmit={submit} className="space-y-4">
@@ -398,36 +398,50 @@ function AssignModal({ server, onAssign, onCancel }) {
   );
 }
 
-function TransferModal({ server, nodes, onTransfer, onCancel }) {
+function TransferModal({ server, count = 1, nodes, onTransfer, onCancel }) {
   const [nodeId, setNodeId] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const available = (nodes || []).filter((n) => n.id !== server.node_id && n.enabled);
+  const excluded = server ? new Set([server.node_id]) : new Set();
+  const available = (nodes || []).filter((n) => n.enabled && !excluded.has(n.id));
 
   async function submit(e) {
     e.preventDefault();
     if (!nodeId) return;
     setBusy(true);
     try {
-      await onTransfer(server.id, nodeId);
+      await onTransfer(nodeId);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onCancel}>
-      <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 font-semibold text-white">Transfer server</h3>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <Card
+        className="w-full max-w-sm"
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <h3 className="mb-4 font-semibold text-white">Transfer {server ? 'server' : 'servers'}</h3>
         <p className="mb-4 text-sm text-zinc-400">
-          Move <b className="text-white">{server.name}</b> to another node. It will be stopped, its files
-          moved to the destination, and recreated there{server.status === 'running' ? ' (then auto-started)' : ''}.
+          {server ? (
+            <>Move <b className="text-white">{server.name}</b> to another node. It will be stopped, its files
+            moved to the destination, and recreated there{server.status === 'running' ? ' (then auto-started)' : ''}.</>
+          ) : (
+            <>Move <b className="text-white">{count} selected servers</b> to another node. Each will be stopped,
+            its files moved to the destination, and recreated there.</>
+          )}
         </p>
         <form onSubmit={submit} className="space-y-4">
           <select
             className="input"
             value={nodeId}
             onChange={(e) => setNodeId(e.target.value)}
+            onMouseDown={(e) => e.stopPropagation()}
             required
           >
             <option value="">Select destination node…</option>
@@ -457,6 +471,7 @@ export default function Servers() {
   const [assigning, setAssigning] = useState(null);
   const [transferring, setTransferring] = useState(null);
   const [nodes, setNodes] = useState([]);
+  const [selected, setSelected] = useState(new Set());
   const [error, setError] = useState('');
   const confirm = useConfirm();
 
@@ -509,14 +524,63 @@ export default function Servers() {
     }
   }
 
-  async function transferServer(serverId, nodeId) {
+  async function openBulkTransfer() {
     try {
-      await api.admin.transferServer(serverId, nodeId);
-      setTransferring(null);
-      load(search);
+      const d = await api.admin.nodes();
+      setNodes(d.nodes || []);
+      setTransferring({ bulk: true });
     } catch (e) {
       setError(e.message);
     }
+  }
+
+  async function doTransfer(nodeId) {
+    const isBulk = transferring && transferring.bulk;
+    const ids = isBulk ? Array.from(selected) : [transferring.id];
+    let failed = 0;
+    for (const id of ids) {
+      try {
+        await api.admin.transferServer(id, nodeId);
+      } catch (e) {
+        failed++;
+        setError(`Transfer failed (${failed}): ${e.message}`);
+      }
+    }
+    setTransferring(null);
+    if (isBulk) setSelected(new Set());
+    load(search);
+  }
+
+  function toggleSelect(id) {
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }
+
+  function toggleSelectAll() {
+    const ids = filteredServers.map((s) => s.id);
+    setSelected((prev) => {
+      const allChecked = ids.length > 0 && ids.every((id) => prev.has(id));
+      const n = new Set(prev);
+      if (allChecked) ids.forEach((id) => n.delete(id));
+      else ids.forEach((id) => n.add(id));
+      return n;
+    });
+  }
+
+  async function bulkSuspend(suspend) {
+    for (const id of Array.from(selected)) {
+      try {
+        if (suspend) await api.admin.suspendServer(id);
+        else await api.admin.unsuspendServer(id);
+      } catch (e) {
+        setError(e.message);
+      }
+    }
+    setSelected(new Set());
+    load(search);
   }
 
   async function power(id, action) {
@@ -557,6 +621,16 @@ export default function Servers() {
       />
       {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
 
+      {selected.size > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-violet-500/20 bg-violet-500/[0.06] px-3 py-2">
+          <span className="text-sm font-medium text-white">{selected.size} selected</span>
+          <button className="btn-ghost !px-2 !py-1 text-xs" onClick={() => bulkSuspend(true)} aria-label="Suspend selected servers">Suspend</button>
+          <button className="btn-ghost !px-2 !py-1 text-xs" onClick={() => bulkSuspend(false)} aria-label="Unsuspend selected servers">Unsuspend</button>
+          <button className="btn-ghost !px-2 !py-1 text-xs" onClick={openBulkTransfer} aria-label="Transfer selected servers">Transfer</button>
+          <button className="btn-ghost !px-2 !py-1 text-xs" onClick={() => setSelected(new Set())}>Clear</button>
+        </div>
+      )}
+
       {assigning && (
         <AssignModal
           server={assigning}
@@ -567,9 +641,10 @@ export default function Servers() {
 
       {transferring && (
         <TransferModal
-          server={transferring}
+          server={transferring.bulk ? null : transferring}
+          count={selected.size}
           nodes={nodes}
-          onTransfer={transferServer}
+          onTransfer={doTransfer}
           onCancel={() => setTransferring(null)}
         />
       )}
@@ -617,6 +692,14 @@ export default function Servers() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/[0.06] text-left text-xs uppercase tracking-wider text-zinc-500">
+              <th scope="col" className="px-2 py-3">
+                <input
+                  type="checkbox"
+                  checked={filteredServers.length > 0 && filteredServers.every((s) => selected.has(s.id))}
+                  onChange={toggleSelectAll}
+                  aria-label="Select all servers"
+                />
+              </th>
               <th scope="col" className="px-4 py-3">Name</th>
               <th scope="col" className="px-4 py-3">Owner</th>
               <th scope="col" className="px-4 py-3">Egg</th>
@@ -628,12 +711,20 @@ export default function Servers() {
           </thead>
           <tbody>
             {filteredServers.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-6 text-center text-zinc-500">
+              <tr><td colSpan={8} className="px-4 py-6 text-center text-zinc-500">
                 {tab === 'mine' ? 'You do not own any servers.' : tab === 'others' ? 'No servers owned by other users.' : 'No servers found.'}
               </td></tr>
             )}
             {filteredServers.map((s) => (
               <tr key={s.id} className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.03]">
+                <td className="px-2 py-3">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(s.id)}
+                    onChange={() => toggleSelect(s.id)}
+                    aria-label={`Select ${s.name}`}
+                  />
+                </td>
                 <td className="px-4 py-3">
                   <p className="font-medium text-white">{s.name}</p>
                   <p className="font-mono text-xs text-zinc-500">{s.identifier}</p>
