@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../api.js';
 import { useAuth, useSettings } from '../App.jsx';
-import { Card, EmptyState, Icons, SectionHeader, ShineCard, Skeleton, SkeletonCard, SpotlightCard, StatusBadge, useToast, cn, AnimatedNumber, GlowButton } from '../components/ui.jsx';
+import { Card, EmptyState, Icons, SectionHeader, Skeleton, SkeletonCard, SpotlightCard, StatusBadge, useToast, cn, AnimatedNumber } from '../components/ui.jsx';
 
 const stroke = {
   fill: 'none',
@@ -248,40 +248,6 @@ export default function Dashboard() {
           <BentoStat label="Running" value={running} icon={SlotIcon} color="sky" delay={0.15} />
           <BentoStat label="Servers" value={servers.length} icon={SlotIcon} color="fuchsia" delay={0.2} />
         </div>
-      </section>
-
-      {/* Plan status + Quick link */}
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <motion.div className="lg:col-span-2" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}>
-          <ShineCard className="relative overflow-hidden">
-            <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-violet-500/10 blur-3xl" />
-            <div className="relative flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 text-violet-300 ring-1 ring-white/10">
-                  <Icons.Server className="h-6 w-6" />
-                </span>
-                <div>
-                  <p className="text-base font-semibold text-white">Server management</p>
-                  <p className="text-xs text-zinc-500">View details, send power actions and open the console.</p>
-                </div>
-              </div>
-              <Link to="/">
-                <GlowButton>Manage servers</GlowButton>
-              </Link>
-            </div>
-          </ShineCard>
-        </motion.div>
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}>
-          <Link to={servers[0] ? `/servers/${servers[0].id}` : '/'}>
-            <Card className="group flex h-full flex-col items-center justify-center gap-3 p-6 text-center transition hover:border-violet-500/30 hover:bg-violet-500/[0.04]">
-              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 text-violet-300 ring-1 ring-white/10 transition-transform group-hover:scale-105">
-                <Icons.Terminal className="h-6 w-6" />
-              </span>
-              <p className="text-sm font-semibold text-white">Open console</p>
-              <p className="text-xs text-zinc-500">Jump into a server terminal</p>
-            </Card>
-          </Link>
-        </motion.div>
       </section>
 
       {/* Recent servers */}
