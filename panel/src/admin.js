@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
+import path from 'node:path';
 import { q, q1, genUuid } from './db.js';
 import { requireAdmin } from './auth.js';
 import { createApiKey, listApiKeys, deleteApiKey } from './api-keys.js';
+import { agentRequest } from './agent-client.js';
 
 export async function adminRoutes(fastify) {
   // ── Overview ──────────────────────────────────────────────
@@ -293,5 +295,36 @@ export async function adminRoutes(fastify) {
   fastify.delete('/api/admin/mounts/:id', { preHandler: requireAdmin }, async (req) => {
     await q(`DELETE FROM mounts WHERE id = $1`, [req.params.id]);
     return { ok: true };
+  });
+
+  // ── Full-panel backup ─────────────────────────────────────
+  fastify.post('/api/admin/backup', { preHandler: requireAdmin }, async (req, reply) => {
+    try {
+      const result = await agentRequest('/backup', 'POST');
+      return result;
+    } catch (e) {
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  fastify.get('/api/admin/backup', { preHandler: requireAdmin }, async (req, reply) => {
+    try {
+      const result = await agentRequest('/backup', 'GET');
+      return result;
+    } catch (e) {
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  fastify.get('/api/admin/backup/download/:name', { preHandler: requireAdmin }, async (req, reply) => {
+    try {
+      const name = path.basename(req.params.name);
+      const agentRes = await agentRequest(`/backup/download/${name}`, 'GET', undefined, { raw: true });
+      reply.header('Content-Disposition', `attachment; filename="${name}"`);
+      reply.type('application/gzip');
+      return agentRes.body;
+    } catch (e) {
+      return reply.code(500).send({ error: e.message });
+    }
   });
 }

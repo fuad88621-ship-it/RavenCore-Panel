@@ -3,6 +3,7 @@ import { WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
 import { config } from './config.js';
 import * as docker from './docker.js';
+import * as backup from './backup.js';
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -236,6 +237,34 @@ app.delete('/servers/:uuid/backups/:name', async (req, res) => {
 app.post('/servers/:uuid/sftp', async (req, res) => {
   try {
     res.json(await docker.setSftpPassword(req.params.uuid, req.body.password));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ---- Full-panel backup ----
+app.post('/backup', auth, async (req, res) => {
+  try {
+    const result = await backup.createBackup();
+    res.json(result);
+  } catch (e) {
+    console.error('[agent] backup failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/backup', auth, async (req, res) => {
+  try {
+    res.json({ backups: backup.listBackups() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/backup/download/:name', auth, async (req, res) => {
+  try {
+    const p = backup.getBackupPath(req.params.name);
+    res.download(p);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

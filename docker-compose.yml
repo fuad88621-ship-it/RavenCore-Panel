@@ -104,11 +104,14 @@ services:
       AGENT_TOKEN: ${AGENT_TOKEN}
       CONSOLE_SECRET: ${CONSOLE_SECRET}
       BOT_DATA_DIR: /var/lib/raven/bots
+      INSTALL_DIR: /opt/raven
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # Host bind mount (NOT a named volume) so bot containers can bind-mount
       # the same host path for their /app volume.
       - /var/lib/raven/bots:/var/lib/raven/bots
+      # Full install directory so the agent can back up/restore config, DB dumps and archives.
+      - /opt/raven:/opt/raven:rw
     mem_limit: 512m
     logging:
       driver: json-file
