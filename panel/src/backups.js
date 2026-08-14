@@ -31,7 +31,7 @@ export async function backupRoutes(fastify) {
       `INSERT INTO backups (uuid, server_id, name, status) VALUES ($1,$2,$3,'running') RETURNING *`,
       [uuid, server.id, name]
     );
-    agentRequest(`/servers/${server.uuid}/backups`, 'POST', { name: uuid }).then(async (res) => {
+    agentRequestFor(server.uuid, `/servers/${server.uuid}/backups`, 'POST', { name: uuid }).then(async (res) => {
       await q(`UPDATE backups SET size_bytes = $1, status = 'completed' WHERE id = $2`, [res.size_bytes || 0, backup.id]);
     }).catch(async (e) => {
       console.error('[backups] create failed:', e.message);
@@ -61,7 +61,7 @@ export async function backupRoutes(fastify) {
       [req.params.id, req.user.id]
     );
     if (!backup) return reply.code(404).send({ error: 'Backup not found' });
-    await agentRequest(`/servers/${backup.server_uuid}/backups/${backup.uuid}/restore`, 'POST');
+    await agentRequestFor(backup.server_uuid, `/servers/${backup.server_uuid}/backups/${backup.uuid}/restore`, 'POST');
     return { ok: true };
   });
 
@@ -72,7 +72,7 @@ export async function backupRoutes(fastify) {
     );
     if (!backup) return reply.code(404).send({ error: 'Backup not found' });
     try {
-      await agentRequest(`/servers/${backup.server_uuid}/backups/${backup.uuid}`, 'DELETE');
+      await agentRequestFor(backup.server_uuid, `/servers/${backup.server_uuid}/backups/${backup.uuid}`, 'DELETE');
     } catch {}
     await q(`DELETE FROM backups WHERE id = $1`, [backup.id]);
     return { ok: true };

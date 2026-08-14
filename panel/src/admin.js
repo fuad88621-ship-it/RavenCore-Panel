@@ -4,6 +4,8 @@ import { q, q1, genUuid } from './db.js';
 import { requireAdmin } from './auth.js';
 import { createApiKey, listApiKeys, deleteApiKey } from './api-keys.js';
 import { agentRequest } from './agent-client.js';
+import { getNodeHealth } from './metrics.js';
+import { authApiKey, hasPermission } from './api-keys.js';
 
 export async function adminRoutes(fastify) {
   // ── Overview ──────────────────────────────────────────────
@@ -108,6 +110,52 @@ export async function adminRoutes(fastify) {
        ORDER BY n.created_at DESC`
     );
     return { nodes };
+  });
+
+  // Live health for every node (CPU/RAM/disk/load/uptime/containers)
+  fastify.get('/api/admin/nodes/health', { preHandler: requireAdmin }, async () => {
+    return { nodes: await getNodeHealth() };
+  });
+
+  // All alerts (admin view)
+  fastify.get('/api/admin/alerts', { preHandler: requireAdmin }, async () => {
+    const alerts = await q(
+      `SELECT a.*, s.name AS server_name, n.name AS node_name
+       FROM alerts a
+       LEFT JOIN servers s ON s.id = a.server_id
+       LEFT JOIN nodes n ON n.id = a.node_id
+       ORDER BY a.created_at DESC LIMIT 100`
+    );
+    return { alerts };
+  });
+
+  // Node self-registration — called by the one-command installer on a new
+  // VPS. Authenticated with an application API key that has `node:create`.
+  fastify.post('/api/admin/nodes/register', async (req, reply) => {
+    const key = await authApiKey(req);
+    if (!key) return reply.code(401).send({ error: 'Invalid API key' });
+    if (!hasPermission(key, 'node:create')) {
+      return reply.code(403).send({ error: 'API key lacks node:create permission' });
+    }
+    const { name, fqdn, port, scheme, memory_mb, disk_mb, cpu_cores, file_directory, sftp_port } = req.body || {};
+    if (!name || !fqdn) {
+      return reply.code(400).send({ error: 'name and fqdn are required' });
+    }
+    const token = crypto.randomBytes(32).toString('hex');
+    const loc = await q1(`SELECT id FROM locations ORDER BY created_at LIMIT 1`);
+    try {
+      const node = await q1(
+        `INSERT INTO nodes (uuid, name, description, location_id, fqdn, port, scheme, visibility, behind_proxy, file_directory, sftp_port, memory_mb, disk_mb, cpu_cores, daemon_token)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id, uuid, name, fqdn, port, scheme`,
+        [genUuid(), name, 'Registered via installer', loc?.id || null, fqdn, port || 8080, scheme || 'http',
+         'public', false, file_directory || '/var/lib/raven/bots', sftp_port || 2022,
+         memory_mb || 0, disk_mb || 0, cpu_cores || 0, token]
+      );
+      return reply.code(201).send({ node, daemon_token: token });
+    } catch (e) {
+      if (e.code === '23505') return reply.code(400).send({ error: 'Node name already exists' });
+      throw e;
+    }
   });
 
   fastify.post('/api/admin/nodes', { preHandler: requireAdmin }, async (req, reply) => {

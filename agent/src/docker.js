@@ -68,7 +68,7 @@ export async function findContainer(uuid) {
   return null;
 }
 
-export async function createBot({ uuid, identifier, image, startup_command, install_command, memory_mb, disk_mb, cpu, env, mounts = [], mount_target = '/home/container', sftp_password = null, io = 500, cpu_pinning = '', oom_killer = true, allocation_port = null }) {
+export async function createBot({ uuid, identifier, image, startup_command, install_command, memory_mb, disk_mb, cpu, env, mounts = [], mount_target = '/home/container', sftp_password = null, io = 500, cpu_pinning = '', oom_killer = true, allocation_port = null, should_run = false }) {
   const dir = await ensureBotDir(uuid);
   const name = containerName(identifier);
   const net = await ensureNetwork(identifier);
@@ -126,6 +126,7 @@ export async function createBot({ uuid, identifier, image, startup_command, inst
     uuid, identifier, image, startup_command, install_command, memory_mb, disk_mb, cpu, env, mounts, mount_target, io,
     allocation_port: allocation_port || null,
     sftp_password: sftp_password || null,
+    should_run: !!should_run,
   }), 'utf8');
 
   // Build bind mounts: bot data dir + any admin-configured mounts
@@ -200,6 +201,7 @@ export async function pullImage(image) {
 export async function power(uuid, action) {
   switch (action) {
     case 'start': {
+      await updateSpec(uuid, { should_run: true });
       let container = await findContainer(uuid);
       if (!container) {
         // Container was removed (e.g. after env change) — rebuild from spec
@@ -211,6 +213,8 @@ export async function power(uuid, action) {
       break;
     }
     case 'stop': {
+      markExpectedStop(uuid);
+      await updateSpec(uuid, { should_run: false });
       const container = await findContainer(uuid);
       if (!container) return { status: 'offline' };
       await container.stop({ t: 10 });
@@ -223,6 +227,8 @@ export async function power(uuid, action) {
       break;
     }
     case 'kill': {
+      markExpectedStop(uuid);
+      await updateSpec(uuid, { should_run: false });
       const container = await findContainer(uuid);
       if (!container) return { status: 'offline' };
       await container.kill();
@@ -236,6 +242,7 @@ export async function power(uuid, action) {
 }
 
 export async function removeBot(uuid) {
+  markExpectedStop(uuid);
   const container = await findContainer(uuid);
   if (container) {
     try { await container.kill(); } catch {}
@@ -367,6 +374,7 @@ export async function updateSpec(uuid, patch) {
 // Rebuild the container from spec (applies env / startup command changes).
 // Does NOT re-run the install step — that would wipe the server's setup.
 export async function recreateContainer(uuid) {
+  markExpectedStop(uuid);
   const spec = await getContainerInfo(uuid);
   const container = await findContainer(uuid);
   if (container) {
@@ -609,4 +617,180 @@ export async function getSftpInfo(identifier) {
     } catch {}
   }
   return null;
+}
+
+// ---- Host stats (node health) ----
+
+const hostCpuSample = { idle: 0, total: 0 };
+
+// Live host-level metrics: CPU, RAM, disk, load, uptime, container counts.
+// Used by the panel's node health dashboard.
+export async function getHostStats() {
+  // CPU from /proc/stat deltas (two samples)
+  let cpuPct = 0;
+  try {
+    const stat = await fs.readFile('/proc/stat', 'utf8');
+    const line = stat.split('\n').find((l) => l.startsWith('cpu '));
+    if (line) {
+      const parts = line.split(/\s+/).slice(1).map(Number);
+      const idle = parts[3] + (parts[4] || 0);
+      const total = parts.reduce((a, b) => a + b, 0);
+      if (hostCpuSample.total > 0 && total > hostCpuSample.total) {
+        const idleDelta = idle - hostCpuSample.idle;
+        const totalDelta = total - hostCpuSample.total;
+        cpuPct = Math.max(0, Math.min(100, ((totalDelta - idleDelta) / totalDelta) * 100));
+      }
+      hostCpuSample.idle = idle;
+      hostCpuSample.total = total;
+    }
+  } catch {}
+
+  // RAM from /proc/meminfo
+  let memTotalMb = 0, memFreeMb = 0;
+  try {
+    const mem = await fs.readFile('/proc/meminfo', 'utf8');
+    const get = (k) => {
+      const m = mem.match(new RegExp(`^${k}:\\s+(\\d+)`));
+      return m ? parseInt(m[1], 10) / 1024 : 0;
+    };
+    memTotalMb = get('MemTotal');
+    memFreeMb = get('MemAvailable') || get('MemFree');
+  } catch {}
+
+  // Disk usage of the bot data dir
+  let diskTotalMb = 0, diskUsedMb = 0;
+  try {
+    const { stdout } = await exec('df', ['-B1', config.botDataDir]);
+    const lines = stdout.trim().split('\n');
+    if (lines.length > 1) {
+      const parts = lines[1].split(/\s+/);
+      diskTotalMb = Math.round(parseInt(parts[1], 10) / 1024 / 1024);
+      diskUsedMb = Math.round(parseInt(parts[2], 10) / 1024 / 1024);
+    }
+  } catch {}
+
+  // Load average
+  let load = [0, 0, 0];
+  try {
+    const l = await fs.readFile('/proc/loadavg', 'utf8');
+    load = l.trim().split(/\s+/).slice(0, 3).map(Number);
+  } catch {}
+
+  // Uptime
+  let uptimeSeconds = 0;
+  try {
+    const u = await fs.readFile('/proc/uptime', 'utf8');
+    uptimeSeconds = Math.floor(parseFloat(u.trim().split(/\s+/)[0]));
+  } catch {}
+
+  // Container counts
+  let containers = { total: 0, running: 0 };
+  try {
+    const list = await docker.listContainers({ all: true });
+    containers.total = list.length;
+    containers.running = list.filter((c) => c.State === 'running').length;
+  } catch {}
+
+  return {
+    online: true,
+    cpu: Math.round(cpuPct * 100) / 100,
+    memory_total_mb: Math.round(memTotalMb),
+    memory_used_mb: Math.round(memTotalMb - memFreeMb),
+    disk_total_mb: diskTotalMb,
+    disk_used_mb: diskUsedMb,
+    load,
+    uptime_seconds: uptimeSeconds,
+    containers,
+  };
+}
+
+// ---- Crash detection + auto-restart with backoff ----
+
+// UUIDs the panel intentionally stopped (stop/kill/remove/recreate) — the
+// crash monitor ignores their exit events.
+const expectedStops = new Set();
+// uuid -> { attempts, timer }
+const crashState = new Map();
+
+export function markExpectedStop(uuid) {
+  expectedStops.add(uuid);
+}
+
+// Watch Docker events. When a server container exits unexpectedly, restart it
+// with exponential backoff (5s -> 10s -> 20s -> 40s -> 60s, max 5 attempts).
+export function startCrashMonitor() {
+  const watch = () => {
+    docker.getEvents({ filters: { type: ['container'] } })
+      .then((stream) => {
+        stream.on('data', (chunk) => {
+          try {
+            const evt = JSON.parse(chunk.toString());
+            if (evt.status !== 'die') return;
+            const attrs = evt.Actor?.Attributes || {};
+            // Ignore install containers and non-raven containers
+            if (attrs['raven.install'] === 'true') return;
+            const uuid = attrs['raven.uuid'];
+            if (!uuid) return;
+            if (expectedStops.has(uuid)) { expectedStops.delete(uuid); return; }
+            scheduleRestart(uuid);
+          } catch {}
+        });
+        stream.on('error', () => setTimeout(watch, 5000));
+        stream.on('end', () => setTimeout(watch, 5000));
+      })
+      .catch(() => setTimeout(watch, 5000));
+  };
+  watch();
+  console.log('[agent] crash monitor started');
+}
+
+function scheduleRestart(uuid) {
+  const st = crashState.get(uuid) || { attempts: 0, timer: null };
+  if (st.attempts >= 5) {
+    console.log(`[agent] giving up on ${uuid} after 5 crash attempts`);
+    crashState.delete(uuid);
+    return;
+  }
+  const delay = Math.min(60000, 5000 * Math.pow(2, st.attempts));
+  st.attempts++;
+  clearTimeout(st.timer);
+  st.timer = setTimeout(async () => {
+    try {
+      const spec = await getContainerInfo(uuid);
+      if (!spec.should_run) { crashState.delete(uuid); return; }
+      const container = await findContainer(uuid);
+      if (!container) { crashState.delete(uuid); return; }
+      const info = await container.inspect();
+      if (info.State.Running) { crashState.delete(uuid); return; }
+      await container.start();
+      console.log(`[agent] auto-restarted ${uuid} (attempt ${st.attempts}, delay ${delay}ms)`);
+      crashState.delete(uuid);
+    } catch (e) {
+      console.error(`[agent] auto-restart failed for ${uuid}:`, e.message);
+    }
+  }, delay);
+  crashState.set(uuid, st);
+}
+
+// After an agent/host restart, bring back every server that was running
+// (spec.should_run === true).
+export async function restoreRunningContainers() {
+  let dirs = [];
+  try { dirs = await fs.readdir(config.botDataDir, { withFileTypes: true }); } catch { return; }
+  for (const d of dirs) {
+    if (!d.isDirectory()) continue;
+    try {
+      const spec = JSON.parse(await fs.readFile(path.join(config.botDataDir, d.name, 'spec.json'), 'utf8'));
+      if (spec.should_run) {
+        const container = await findContainer(spec.uuid);
+        if (container) {
+          const info = await container.inspect();
+          if (!info.State.Running) {
+            await container.start();
+            console.log(`[agent] restored ${spec.uuid} after restart`);
+          }
+        }
+      }
+    } catch {}
+  }
 }

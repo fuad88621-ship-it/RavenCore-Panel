@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation, NavLink, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from './api.js';
@@ -270,6 +270,80 @@ function MobileNav({ user, onLogout, nav }) {
   );
 }
 
+function AlertsBell() {
+  const [alerts, setAlerts] = useState([]);
+  const [unread, setUnread] = useState(0);
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    let mounted = true;
+    function load() {
+      api.alerts().then((d) => {
+        if (!mounted) return;
+        setAlerts(d.alerts || []);
+        setUnread(d.unread || 0);
+      }).catch(() => {});
+    }
+    load();
+    const t = setInterval(load, 60000);
+    return () => { mounted = false; clearInterval(t); };
+  }, []);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  async function markRead() {
+    try { await api.alertsRead(); setUnread(0); setAlerts((a) => a.map((x) => ({ ...x, read: true }))); } catch {}
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-zinc-400 transition hover:text-white"
+        aria-label={`Notifications (${unread} unread)`}
+      >
+        <Icons.Bell className="h-5 w-5" />
+        {unread > 0 && (
+          <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow-lg">
+            {unread > 99 ? '99+' : unread}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-12 z-50 w-80 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0d0d12]/95 shadow-2xl backdrop-blur-xl">
+          <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+            <span className="text-sm font-semibold text-white">Alerts</span>
+            {unread > 0 && (
+              <button onClick={markRead} className="text-xs text-violet-300 hover:text-violet-200">Mark all read</button>
+            )}
+          </div>
+          <div className="max-h-80 overflow-y-auto">
+            {alerts.length === 0 && (
+              <p className="px-4 py-8 text-center text-sm text-zinc-500">No alerts 🎉</p>
+            )}
+            {alerts.map((a) => (
+              <div key={a.id} className={cn('flex gap-3 border-b border-white/[0.04] px-4 py-3', !a.read && 'bg-violet-500/[0.06]')}>
+                <span className={cn('mt-1 h-2 w-2 shrink-0 rounded-full', a.severity === 'error' ? 'bg-red-400' : 'bg-amber-400')} />
+                <div className="min-w-0">
+                  <p className="text-[13px] leading-snug text-zinc-200">{a.message}</p>
+                  <p className="mt-0.5 text-[11px] text-zinc-500">{a.server_name} · {new Date(a.created_at).toLocaleString()}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Layout({ children }) {
   const { user, logout } = useAuth();
   const { toasts, dismiss } = useToasts();
@@ -303,6 +377,9 @@ function Layout({ children }) {
       <Sidebar user={user} onLogout={logout} nav={nav} />
       <div className="lg:pl-[280px]">
         <MobileNav user={user} onLogout={logout} nav={nav} />
+        <div className="fixed right-4 top-4 z-40 lg:right-6 lg:top-5">
+          <AlertsBell />
+        </div>
         <main className="mx-auto w-full max-w-7xl px-4 pb-16 pt-6 sm:px-6 sm:pt-8 lg:px-8">
           <AnimatePresence mode="wait">
             <motion.div

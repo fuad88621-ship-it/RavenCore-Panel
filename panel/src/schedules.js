@@ -75,10 +75,10 @@ async function executeTask(sched, task) {
     case 'stop':
     case 'restart':
     case 'kill':
-      await agentRequest(`/servers/${sched.server_uuid}/power`, 'POST', { action: task.action });
+      await agentRequestFor(sched.server_uuid, `/servers/${sched.server_uuid}/power`, 'POST', { action: task.action });
       break;
     case 'command':
-      await agentRequest(`/servers/${sched.server_uuid}/command`, 'POST', { command: task.payload });
+      await agentRequestFor(sched.server_uuid, `/servers/${sched.server_uuid}/command`, 'POST', { command: task.payload });
       break;
   }
 }

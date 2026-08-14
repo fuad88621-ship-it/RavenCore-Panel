@@ -3,9 +3,11 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import Editor from '@monaco-editor/react';
 import { api } from '../api.js';
 import { useDebouncedCallback } from '../useDebounce.js';
 import { Card, ErrorState, Icons, Select, Skeleton, StatusBadge, useConfirm, useToast, cn } from '../components/ui.jsx';
+import { AreaChart } from '../components/Charts.jsx';
 
 function StatChip({ label, value }) {
   return (
@@ -78,8 +80,9 @@ function StatCard({ icon, label, value, sub, bar, index, copy }) {
   );
 }
 
-function ConsoleTab({ server }) {
+function ConsoleTab({ server, resetKey }) {
   const termRef = useRef(null);
+  const termInstanceRef = useRef(null);
   const wsRef = useRef(null);
   const connectRef = useRef(null);
   const [connected, setConnected] = useState(false);
@@ -88,6 +91,14 @@ function ConsoleTab({ server }) {
   const [cmdHistory, setCmdHistory] = useState([]);
   const [histIdx, setHistIdx] = useState(-1);
   const [reconnecting, setReconnecting] = useState(false);
+
+  // Clicking the active tab again clears the terminal.
+  useEffect(() => {
+    if (resetKey > 0 && termInstanceRef.current) {
+      termInstanceRef.current.clear();
+      termInstanceRef.current.writeln('\x1b[32m● Console cleared.\x1b[0m');
+    }
+  }, [resetKey]);
 
   useEffect(() => {
     const installing = server.status === 'installing';
@@ -156,6 +167,7 @@ function ConsoleTab({ server }) {
         fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
         theme: { background: '#0a0a0f', foreground: '#d1d5db', cursor: '#8b5cf6' },
       });
+      termInstanceRef.current = term;
       fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
       await new Promise((r) => { startupTimer = setTimeout(r, 300); });
@@ -367,6 +379,22 @@ function isArchive(name) {
   return lower.endsWith('.zip') || lower.endsWith('.tar.gz') || lower.endsWith('.tgz') || lower.endsWith('.tar') || lower.endsWith('.7z') || lower.endsWith('.rar');
 }
 
+// Guess a Monaco language id from a filename.
+function langFor(name) {
+  const ext = (name || '').split('.').pop()?.toLowerCase();
+  const map = {
+    js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+    json: 'json', yml: 'yaml', yaml: 'yaml', toml: 'ini', ini: 'ini', cfg: 'ini', conf: 'ini', properties: 'ini',
+    py: 'python', sh: 'shell', bash: 'shell', zsh: 'shell',
+    html: 'html', htm: 'html', css: 'css', scss: 'scss', less: 'less',
+    md: 'markdown', xml: 'xml', svg: 'xml', sql: 'sql', java: 'java', kt: 'kotlin',
+    go: 'go', rs: 'rust', c: 'c', h: 'c', cpp: 'cpp', hpp: 'cpp', cs: 'csharp',
+    rb: 'ruby', php: 'php', lua: 'lua', dockerfile: 'dockerfile',
+  };
+  if (/dockerfile/i.test(name)) return 'dockerfile';
+  return map[ext] || 'plaintext';
+}
+
 function fmtDate(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -379,7 +407,7 @@ function parentPath(p) {
   return idx <= 0 ? '/' : p.slice(0, idx);
 }
 
-function FilesTab({ server }) {
+function FilesTab({ server, resetKey }) {
   const [path, setPath] = useState('/');
   const [files, setFiles] = useState([]);
   const [editing, setEditing] = useState(null);
@@ -404,6 +432,16 @@ function FilesTab({ server }) {
   }
 
   useEffect(() => { load('/'); }, [server.id]);
+
+  // Clicking the active tab again returns to the root folder.
+  useEffect(() => {
+    if (resetKey > 0) {
+      setEditing(null);
+      setModal(null);
+      setSelected(new Set());
+      load('/');
+    }
+  }, [resetKey]);
 
   function join(p, name) {
     return p === '/' ? `/${name}` : `${p}/${name}`;
@@ -628,7 +666,23 @@ function FilesTab({ server }) {
             </div>
             <button className="btn-primary !px-3 !py-1.5 text-xs" onClick={save}><Icons.Save className="h-3.5 w-3.5" /> Save</button>
           </div>
-          <textarea className="input h-[480px] font-mono text-sm" value={content} onChange={(e) => setContent(e.target.value)} spellCheck={false} />
+          <Editor
+            height="480px"
+            language={langFor(editing)}
+            value={content}
+            onChange={(v) => setContent(v || '')}
+            theme="vs-dark"
+            options={{
+              fontSize: 13,
+              fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              tabSize: 2,
+              wordWrap: 'on',
+            }}
+            loading={<div className="flex h-[480px] items-center justify-center text-sm text-zinc-500">Loading editor…</div>}
+          />
         </motion.div>
       ) : (
         <>
@@ -881,12 +935,17 @@ function FilesTab({ server }) {
   );
 }
 
-function DatabasesTab({ server }) {
+function DatabasesTab({ server, resetKey }) {
   const [databases, setDatabases] = useState([]);
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [revealed, setRevealed] = useState({});
   const confirm = useConfirm();
+
+  // Clicking the active tab again resets the form.
+  useEffect(() => {
+    if (resetKey > 0) { setName(''); setRevealed({}); setError(''); }
+  }, [resetKey]);
 
   async function load() {
     try {
@@ -1038,7 +1097,7 @@ function StartupTab({ server }) {
   );
 }
 
-function SettingsTab({ server, onDeleted }) {
+function SettingsTab({ server, onDeleted, resetKey }) {
   const [name, setName] = useState(server.name);
   const [description, setDescription] = useState(server.description || '');
   const [error, setError] = useState('');
@@ -1046,6 +1105,11 @@ function SettingsTab({ server, onDeleted }) {
   const savedTimer = useRef(null);
   const toast = useToast();
   const confirm = useConfirm();
+
+  // Clicking the active tab again restores the saved values.
+  useEffect(() => {
+    if (resetKey > 0) { setName(server.name); setDescription(server.description || ''); setError(''); }
+  }, [resetKey]);
 
   useEffect(() => () => {
     if (savedTimer.current) clearTimeout(savedTimer.current);
@@ -1113,12 +1177,17 @@ function SettingsTab({ server, onDeleted }) {
   );
 }
 
-function SchedulesTab({ server }) {
+function SchedulesTab({ server, resetKey }) {
   const [schedules, setSchedules] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', cron: '*/5 * * * *', is_active: true, tasks: [{ action: 'command', payload: '' }] });
   const [error, setError] = useState('');
   const confirm = useConfirm();
+
+  // Clicking the active tab again closes the create form.
+  useEffect(() => {
+    if (resetKey > 0) { setShowForm(false); setError(''); }
+  }, [resetKey]);
 
   async function load() {
     try {
@@ -1215,7 +1284,7 @@ function SchedulesTab({ server }) {
   );
 }
 
-function UsersTab({ server }) {
+function UsersTab({ server, resetKey }) {
   const [users, setUsers] = useState([]);
   const [perms, setPerms] = useState([]);
   const [search, setSearch] = useState('');
@@ -1225,6 +1294,11 @@ function UsersTab({ server }) {
   const [selectedPerms, setSelectedPerms] = useState([]);
   const [error, setError] = useState('');
   const confirm = useConfirm();
+
+  // Clicking the active tab again clears the search.
+  useEffect(() => {
+    if (resetKey > 0) { setSearch(''); setResults([]); setSelected(null); setSelectedPerms([]); setError(''); }
+  }, [resetKey]);
 
   async function load() {
     try {
@@ -1365,11 +1439,16 @@ function UsersTab({ server }) {
   );
 }
 
-function BackupsTab({ server }) {
+function BackupsTab({ server, resetKey }) {
   const [backups, setBackups] = useState([]);
   const [error, setError] = useState('');
   const toast = useToast();
   const confirm = useConfirm();
+
+  // Clicking the active tab again refreshes the list.
+  useEffect(() => {
+    if (resetKey > 0) load();
+  }, [resetKey]);
 
   async function load() {
     try {
@@ -1600,7 +1679,7 @@ function NetworkTab({ server }) {
   );
 }
 
-function PluginsTab({ server }) {
+function PluginsTab({ server, resetKey }) {
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState([]);
   const [installed, setInstalled] = useState([]);
@@ -1610,6 +1689,11 @@ function PluginsTab({ server }) {
   const [error, setError] = useState('');
   const toast = useToast();
   const confirm = useConfirm();
+
+  // Clicking the active tab again resets to the popular list.
+  useEffect(() => {
+    if (resetKey > 0) { setQuery(''); setError(''); doSearch(''); }
+  }, [resetKey]);
 
   // Match an installed jar filename against a plugin title (e.g. "EssentialsX"
   // matches "EssentialsX-2.22.0.jar").
@@ -1772,7 +1856,9 @@ export default function ServerDetail() {
   const navigate = useNavigate();
   const [server, setServer] = useState(null);
   const [tab, setTab] = useState('console');
+  const [resetKey, setResetKey] = useState(0);
   const [resources, setResources] = useState(null);
+  const [metrics, setMetrics] = useState([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -1804,6 +1890,20 @@ export default function ServerDetail() {
       clearInterval(t);
       document.removeEventListener('visibilitychange', onVis);
     };
+  }, [server?.id]);
+
+  // Resource history for the live graphs (24h, refreshed every 60s)
+  useEffect(() => {
+    if (!server) return;
+    let mounted = true;
+    function load() {
+      api.metrics(server.id, 24)
+        .then((d) => { if (mounted) setMetrics(d.metrics || []); })
+        .catch(() => {});
+    }
+    load();
+    const t = setInterval(load, 60000);
+    return () => { mounted = false; clearInterval(t); };
   }, [server?.id]);
 
   const tabs = useMemo(() => [
@@ -1910,7 +2010,10 @@ export default function ServerDetail() {
         {tabs.map((t) => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => {
+              if (tab === t.id) setResetKey((k) => k + 1);
+              else setTab(t.id);
+            }}
             className={cn(
               '-mb-px flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
               tab === t.id ? 'border-violet-500 text-white' : 'border-transparent text-zinc-500 hover:text-white'
@@ -1945,18 +2048,55 @@ export default function ServerDetail() {
       </div>
       {tab !== 'console' && (
         <>
-          {tab === 'files' && <FilesTab server={server} />}
-          {tab === 'databases' && <DatabasesTab server={server} />}
-          {tab === 'schedules' && <SchedulesTab server={server} />}
-          {tab === 'users' && <UsersTab server={server} />}
-          {tab === 'backups' && <BackupsTab server={server} />}
-          {tab === 'network' && <NetworkTab server={server} />}
-          {tab === 'plugins' && <PluginsTab server={server} />}
-          {tab === 'startup' && <StartupTab server={server} />}
-          {tab === 'activity' && <ActivityTab server={server} />}
-          {tab === 'settings' && <SettingsTab server={server} onDeleted={() => navigate('/')} />}
+          {tab === 'files' && <FilesTab server={server} resetKey={resetKey} />}
+          {tab === 'databases' && <DatabasesTab server={server} resetKey={resetKey} />}
+          {tab === 'schedules' && <SchedulesTab server={server} resetKey={resetKey} />}
+          {tab === 'users' && <UsersTab server={server} resetKey={resetKey} />}
+          {tab === 'backups' && <BackupsTab server={server} resetKey={resetKey} />}
+          {tab === 'network' && <NetworkTab server={server} resetKey={resetKey} />}
+          {tab === 'plugins' && <PluginsTab server={server} resetKey={resetKey} />}
+          {tab === 'startup' && <StartupTab server={server} resetKey={resetKey} />}
+          {tab === 'activity' && <ActivityTab server={server} resetKey={resetKey} />}
+          {tab === 'settings' && <SettingsTab server={server} onDeleted={() => navigate('/')} resetKey={resetKey} />}
         </>
       )}
+
+      {/* Resource history (24h live graphs) */}
+      <Card className="mt-6 p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-white">Resource History</h2>
+            <p className="text-xs text-zinc-500">Last 24 hours · sampled every 30s</p>
+          </div>
+          <span className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+            live
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+          <div>
+            <div className="mb-1 flex items-center justify-between text-xs">
+              <span className="flex items-center gap-1.5 text-zinc-400"><Icons.Cpu className="h-3.5 w-3.5" /> CPU</span>
+              <span className="font-mono text-zinc-300">{metrics.length ? `${Math.round(metrics[metrics.length - 1].cpu)}%` : '—'}</span>
+            </div>
+            <AreaChart data={metrics} valueKey="cpu" color="#8b5cf6" format={(v) => `${Math.round(v)}%`} max={server?.cpu || 100} />
+          </div>
+          <div>
+            <div className="mb-1 flex items-center justify-between text-xs">
+              <span className="flex items-center gap-1.5 text-zinc-400"><Icons.Ram className="h-3.5 w-3.5" /> Memory</span>
+              <span className="font-mono text-zinc-300">{metrics.length ? `${formatMemory(metrics[metrics.length - 1].memory_mb)}` : '—'}</span>
+            </div>
+            <AreaChart data={metrics} valueKey="memory_mb" color="#34d399" format={(v) => formatMemory(v)} />
+          </div>
+          <div>
+            <div className="mb-1 flex items-center justify-between text-xs">
+              <span className="flex items-center gap-1.5 text-zinc-400"><Icons.Disk className="h-3.5 w-3.5" /> Disk</span>
+              <span className="font-mono text-zinc-300">{metrics.length ? `${formatMemory(metrics[metrics.length - 1].disk_mb)}` : '—'}</span>
+            </div>
+            <AreaChart data={metrics} valueKey="disk_mb" color="#fbbf24" format={(v) => formatMemory(v)} />
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }

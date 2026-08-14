@@ -33,6 +33,14 @@ app.get('/health', (req, res) => {
   res.json({ online: true, version: '0.2.0' });
 });
 
+app.get('/host/stats', auth, async (req, res) => {
+  try {
+    res.json(await docker.getHostStats());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/servers', async (req, res) => {
   try {
     const result = await docker.createBot(req.body);
@@ -300,6 +308,11 @@ app.get('/backup/download/:name', auth, async (req, res) => {
 const server = app.listen(config.port, '0.0.0.0', () => {
   console.log(`[agent] listening on :${config.port}`);
 });
+
+// Crash detection + auto-restart with backoff, and bring back servers that
+// were running before this agent restarted.
+docker.startCrashMonitor();
+docker.restoreRunningContainers().then(() => console.log('[agent] containers restored'));
 
 // ---- Console WebSocket ----
 // Path is validated manually in the connection handler (the ws library's

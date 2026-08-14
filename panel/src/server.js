@@ -18,6 +18,7 @@ import { scheduleRoutes, startScheduler } from './schedules.js';
 import { subuserRoutes } from './subusers.js';
 import { backupRoutes } from './backups.js';
 import { networkRoutes } from './network.js';
+import { startMetricsSampler } from './metrics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -51,6 +52,7 @@ await app.register(backupRoutes);
 await app.register(networkRoutes);
 
 startScheduler();
+startMetricsSampler();
 
 // SPA fallback
 app.setNotFoundHandler((req, reply) => {

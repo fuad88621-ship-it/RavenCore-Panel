@@ -1,265 +1,178 @@
 #!/usr/bin/env bash
-# RavenCore Panel — one-command installer
-# Usage: bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh)
-set -euo pipefail
+# ═══════════════════════════════════════════════════════════════════
+#  RavenCore Panel — Node Installer
+#  Run this on a NEW VPS to connect it to your panel as a node.
+#
+#    bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh)
+#
+#  It will ask you a few simple questions (panel URL, API key, how much
+#  RAM/disk/CPU to give the node) and do everything else automatically:
+#  install Docker, register the node with your panel, install the agent,
+#  and start it. No technical knowledge needed.
+# ═══════════════════════════════════════════════════════════════════
 
-REPO="https://github.com/fuad88621-ship-it/RavenCore-Panel.git"
-INSTALL_DIR="/opt/raven"
+set -e
 
-# ─── Colors ─────────────────────────────────────────────────────────
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# ── Colors ─────────────────────────────────────────────────────────
+C_RESET='\033[0m'; C_GREEN='\033[32m'; C_CYAN='\033[36m'; C_YELLOW='\033[33m'; C_RED='\033[31m'; C_BOLD='\033[1m'
 
-# ─── Helpers ────────────────────────────────────────────────────────
-info() { echo -e "${BLUE}[*]${NC} $*"; }
-ok()   { echo -e "${GREEN}[✓]${NC} $*"; }
-warn() { echo -e "${YELLOW}[!]${NC} $*"; }
-err()  { echo -e "${RED}[✗]${NC} $*"; }
+info()  { echo -e "${C_CYAN}[i]${C_RESET} $1"; }
+ok()    { echo -e "${C_GREEN}[✓]${C_RESET} $1"; }
+warn()  { echo -e "${C_YELLOW}[!]${C_RESET} $1"; }
+fail()  { echo -e "${C_RED}[✗]${C_RESET} $1"; exit 1; }
 
-require_root() {
-  if [[ $EUID -ne 0 ]]; then
-    err "This installer must be run as root. Try: sudo bash install.sh"
-    exit 1
-  fi
-}
+# ── Root check ─────────────────────────────────────────────────────
+if [ "$(id -u)" -ne 0 ]; then
+  fail "Please run this script as root:  sudo bash <(curl -fsSL ...)"
+fi
 
-install_system_deps() {
-  info "Installing system dependencies…"
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update -qq
-  apt-get install -y -qq curl ca-certificates openssl git jq >/dev/null
-  ok "System dependencies installed"
-}
+echo ""
+echo -e "${C_BOLD}${C_CYAN}  ╔══════════════════════════════════════════════╗"
+echo -e "  ║     RavenCore Panel — Node Installer        ║"
+echo -e "  ║     Connect this VPS to your panel         ║"
+echo -e "  ╚══════════════════════════════════════════════╝${C_RESET}"
+echo ""
 
-install_docker() {
-  if ! command -v docker >/dev/null 2>&1; then
-    info "Installing Docker…"
-    curl -fsSL https://get.docker.com | sh
-  else
-    ok "Docker already installed"
-  fi
+# ── Ask questions (with smart defaults) ──────────────────────────
+read -rp "  Panel URL (e.g. https://panel.ravenshop.store): " PANEL_URL
+PANEL_URL="${PANEL_URL%/}"
+[ -z "$PANEL_URL" ] && fail "Panel URL is required."
 
-  if ! docker compose version >/dev/null 2>&1; then
-    info "Installing Docker Compose plugin…"
-    apt-get install -y -qq docker-compose-plugin >/dev/null
-  else
-    ok "Docker Compose already installed"
-  fi
-}
+echo ""
+echo -e "  ${C_YELLOW}Application API key:${C_RESET}"
+echo -e "  Create one in your panel:  Admin → Application API → New Key"
+echo -e "  Give it the ${C_BOLD}node:create${C_RESET} permission (or just select all)."
+read -rp "  Paste the key (starts with ptla_): " API_KEY
+[ -z "$API_KEY" ] && fail "API key is required."
 
-download_panel() {
-  if [[ -f "$INSTALL_DIR/docker-compose.yml" ]]; then
-    warn "$INSTALL_DIR already contains RavenCore files."
-    read -rp "Update from git? [y/N]: " update
-    if [[ "$update" =~ ^[Yy]$ ]]; then
-      cd "$INSTALL_DIR"
-      git pull
-    fi
-  else
-    info "Downloading RavenCore Panel from GitHub…"
-    mkdir -p "$INSTALL_DIR"
-    git clone "$REPO" "$INSTALL_DIR"
-    ok "Downloaded to $INSTALL_DIR"
-  fi
-}
+read -rp "  Node name (e.g. Node-02): " NODE_NAME
+[ -z "$NODE_NAME" ] && NODE_NAME="Node-$(hostname | tr -cd 'a-zA-Z0-9' | head -c 8)"
 
-generate_secrets() {
-  if [[ -f "$INSTALL_DIR/.env" ]]; then
-    ok ".env already exists — keeping existing secrets"
-    return
-  fi
+# Auto-detect FQDN: prefer a real hostname, fall back to public IP
+DETECTED_FQDN="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo '')"
+PUBLIC_IP="$(curl -fsSL --max-time 5 https://api.ipify.org 2>/dev/null || echo '')"
+if [ -z "$DETECTED_FQDN" ] || [ "$DETECTED_FQDN" = "localhost" ]; then
+  DETECTED_FQDN="$PUBLIC_IP"
+fi
+read -rp "  Node FQDN / IP (players connect here) [${DETECTED_FQDN}]: " NODE_FQDN
+[ -z "$NODE_FQDN" ] && NODE_FQDN="$DETECTED_FQDN"
 
-  info "Generating secure secrets…"
-  cd "$INSTALL_DIR"
-  cp .env.example .env
+read -rp "  Agent port (default 8080): " AGENT_PORT
+[ -z "$AGENT_PORT" ] && AGENT_PORT=8080
 
-  DB_PASSWORD=$(openssl rand -hex 32)
-  SESSION_SECRET=$(openssl rand -hex 32)
-  AGENT_TOKEN=$(openssl rand -hex 32)
-  CONSOLE_SECRET=$(openssl rand -hex 32)
+# Auto-detect resources
+TOTAL_MEM_MB="$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo 2>/dev/null || echo 0)"
+TOTAL_DISK_MB="$(df -B1 / 2>/dev/null | awk 'NR==2 {printf "%d", $2/1024/1024}' || echo 0)"
+TOTAL_CPU="$(nproc 2>/dev/null || echo 1)"
+read -rp "  RAM to give the node in MB [${TOTAL_MEM_MB}]: " NODE_MEM
+[ -z "$NODE_MEM" ] && NODE_MEM="$TOTAL_MEM_MB"
+read -rp "  Disk to give the node in MB [${TOTAL_DISK_MB}]: " NODE_DISK
+[ -z "$NODE_DISK" ] && NODE_DISK="$TOTAL_DISK_MB"
+read -rp "  CPU cores to give the node [${TOTAL_CPU}]: " NODE_CPU
+[ -z "$NODE_CPU" ] && NODE_CPU="$TOTAL_CPU"
 
-  sed -i "s|^DB_PASSWORD=.*|DB_PASSWORD=$DB_PASSWORD|" .env
-  sed -i "s|^SESSION_SECRET=.*|SESSION_SECRET=$SESSION_SECRET|" .env
-  sed -i "s|^AGENT_TOKEN=.*|AGENT_TOKEN=$AGENT_TOKEN|" .env
-  sed -i "s|^CONSOLE_SECRET=.*|CONSOLE_SECRET=$CONSOLE_SECRET|" .env
+read -rp "  Server data directory [/var/lib/raven/bots]: " DATA_DIR
+[ -z "$DATA_DIR" ] && DATA_DIR="/var/lib/raven/bots"
 
-  chmod 600 .env
-  ok "Secrets generated in $INSTALL_DIR/.env"
-}
+echo ""
+info "Registering node \"${NODE_NAME}\" with ${PANEL_URL}…"
 
-build_and_start() {
-  local services="$1"
-  info "Building and starting services: $services"
-  cd "$INSTALL_DIR"
+# ── Register the node with the panel ──────────────────────────────
+REGISTER_JSON=$(cat <<EOF
+{"name":"${NODE_NAME}","fqdn":"${NODE_FQDN}","port":${AGENT_PORT},"scheme":"http","memory_mb":${NODE_MEM:-0},"disk_mb":${NODE_DISK:-0},"cpu_cores":${NODE_CPU:-0},"file_directory":"${DATA_DIR}"}
+EOF
+)
 
-  if [[ "$services" == "panel" ]]; then
-    docker compose up -d --build postgres redis mariadb panel caddy
-  elif [[ "$services" == "agent" ]]; then
-    docker compose up -d --build agent
-  else
-    docker compose up -d --build
-  fi
+RESPONSE="$(curl -fsSL --max-time 20 -X POST "${PANEL_URL}/api/admin/nodes/register" \
+  -H "Authorization: Bearer ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d "$REGISTER_JSON" 2>/dev/null)" || fail "Could not reach the panel. Check the URL and API key."
 
-  ok "Services started"
-}
+DAEMON_TOKEN="$(echo "$RESPONSE" | sed -n 's/.*"daemon_token":"\([^"]*\)".*/\1/p')"
+if [ -z "$DAEMON_TOKEN" ]; then
+  fail "Registration failed. Response: $RESPONSE"
+fi
+ok "Node registered! (daemon token received)"
 
-wait_for_panel() {
-  info "Waiting for the panel container to be ready…"
-  local i
-  for i in {1..30}; do
-    if docker compose exec -T panel node -e "console.log('ready')" >/dev/null 2>&1; then
-      ok "Panel is ready"
-      return 0
-    fi
-    sleep 2
-  done
-  err "Panel did not become ready in time. Check logs: docker compose logs panel"
-  return 1
-}
+# ── Install Docker ────────────────────────────────────────────────
+if ! command -v docker >/dev/null 2>&1; then
+  info "Installing Docker… (this can take a minute)"
+  curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 || fail "Docker install failed. Install it manually: https://get.docker.com"
+  systemctl enable --now docker >/dev/null 2>&1 || true
+  ok "Docker installed"
+else
+  ok "Docker already installed"
+fi
 
-create_admin_account() {
-  echo ""
-  echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
-  echo -e "${BLUE}  Create your admin account${NC}"
-  echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
-  echo ""
+# ── Download the agent ────────────────────────────────────────────
+AGENT_DIR="/opt/raven-agent"
+info "Downloading the RavenCore agent…"
+mkdir -p "$AGENT_DIR"
+TARBALL="$(mktemp)"
+curl -fsSL --max-time 120 -o "$TARBALL" \
+  "https://github.com/fuad88621-ship-it/RavenCore-Panel/archive/refs/heads/main.tar.gz" \
+  || fail "Could not download the agent source."
+tar -xzf "$TARBALL" -C "$AGENT_DIR" --strip-components=1 2>/dev/null \
+  || fail "Could not extract the agent source."
+rm -f "$TARBALL"
+ok "Agent source downloaded"
 
-  local admin_user admin_email admin_pass admin_pass2
-  read -rp "Admin username: " admin_user
-  read -rp "Admin email:    " admin_email
-  read -rsp "Admin password: " admin_pass
-  echo ""
-  read -rsp "Confirm password: " admin_pass2
-  echo ""
+# ── Write agent config + compose ──────────────────────────────────
+mkdir -p "$DATA_DIR"
+cat > "$AGENT_DIR/docker-compose.yml" <<EOF
+services:
+  agent:
+    build: ./agent
+    restart: unless-stopped
+    ports:
+      - "${AGENT_PORT}:8080"
+      - "2022:2022"
+    environment:
+      NODE_OPTIONS: --max-old-space-size=256
+      AGENT_TOKEN: ${DAEMON_TOKEN}
+      CONSOLE_SECRET: ${DAEMON_TOKEN}
+      BOT_DATA_DIR: ${DATA_DIR}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_DIR}:${DATA_DIR}
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+EOF
 
-  if [[ -z "$admin_user" || -z "$admin_email" || -z "$admin_pass" ]]; then
-    warn "Empty fields — admin account not created. You can create one later from the README instructions."
-    return 0
-  fi
+# ── Start the agent ───────────────────────────────────────────────
+info "Building and starting the agent… (first build takes a few minutes)"
+cd "$AGENT_DIR"
+docker compose up -d --build >/dev/null 2>&1 || fail "Agent failed to start. Run 'cd /opt/raven-agent && docker compose logs agent' to see why."
+ok "Agent is running!"
 
-  if [[ "$admin_pass" != "$admin_pass2" ]]; then
-    err "Passwords do not match — admin account not created."
-    return 1
-  fi
+# ── Firewall ─────────────────────────────────────────────────────
+if command -v ufw >/dev/null 2>&1; then
+  ufw allow "${AGENT_PORT}/tcp" >/dev/null 2>&1 || true
+  ufw allow 2022/tcp >/dev/null 2>&1 || true
+  ok "Firewall rules added (agent port + SFTP port)"
+fi
 
-  wait_for_panel
-
-  info "Creating admin account…"
-  if docker compose exec -T \
-    -e ADMIN_USER="$admin_user" \
-    -e ADMIN_EMAIL="$admin_email" \
-    -e ADMIN_PASS="$admin_pass" \
-    panel node -e "
-const { registerUser } = await import('./src/auth.js');
-const { q } = await import('./src/db.js');
-try {
-  const user = await registerUser(process.env.ADMIN_USER, process.env.ADMIN_EMAIL, process.env.ADMIN_PASS);
-  await q('UPDATE users SET root_admin = true WHERE id = \$1', [user.id]);
-  console.log('Admin account created: ' + user.username);
-} catch (e) {
-  console.error('Failed to create admin: ' + e.message);
-  process.exit(1);
-}
-"; then
-    ok "Admin account created: $admin_user"
-  else
-    err "Could not create admin account. See error above."
-  fi
-}
-
-print_summary() {
-  echo ""
-  echo -e "${GREEN}═══════════════════════════════════════════════════${NC}"
-  echo -e "${GREEN}  RavenCore Panel installed successfully!${NC}"
-  echo -e "${GREEN}═══════════════════════════════════════════════════${NC}"
-  echo ""
-  echo "  Installation directory: $INSTALL_DIR"
-  echo "  Config file:            $INSTALL_DIR/config.yml"
-  echo "  Secrets:                $INSTALL_DIR/.env"
-  echo ""
-  echo "  Next steps:"
-  echo "    1. Update config.yml with your domain names."
-  echo "    2. Point your domains to this server's IP."
-  echo "    3. Run: cd $INSTALL_DIR && docker compose up -d --build"
-  echo "    4. Open the Panel URL and log in with your admin account."
-  echo ""
-}
-
-show_menu() {
-  echo ""
-  echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
-  echo -e "${BLUE}  RavenCore Panel Installer${NC}"
-  echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
-  echo ""
-  echo "  [1] Install Panel"
-  echo "  [2] Install Agent (Wings)"
-  echo "  [3] Install Panel + Agent"
-  echo "  [4] Exit"
-  echo ""
-}
-
-install_panel() {
-  install_system_deps
-  install_docker
-  download_panel
-  generate_secrets
-  build_and_start "panel"
-  create_admin_account
-  print_summary
-}
-
-install_agent() {
-  install_system_deps
-  install_docker
-  download_panel
-  generate_secrets
-  build_and_start "agent"
-  ok "Agent installed. Add this machine as a node in the Panel."
-}
-
-install_both() {
-  install_system_deps
-  install_docker
-  download_panel
-  generate_secrets
-  build_and_start "both"
-  create_admin_account
-  print_summary
-}
-
-# ─── Main ───────────────────────────────────────────────────────────
-main() {
-  require_root
-
-  while true; do
-    show_menu
-    read -rp "Select an option [1-4]: " choice
-    case "$choice" in
-      1)
-        install_panel
-        exit 0
-        ;;
-      2)
-        install_agent
-        exit 0
-        ;;
-      3)
-        install_both
-        exit 0
-        ;;
-      4)
-        echo "Exiting."
-        exit 0
-        ;;
-      *)
-        err "Invalid option. Please choose 1-4."
-        sleep 1
-        ;;
-    esac
-  done
-}
-
-main "$@"
+echo ""
+echo -e "${C_GREEN}${C_BOLD}  ──────────────────────────────────────────────"
+echo -e "   🎉  Node connected successfully!"
+echo -e "  ──────────────────────────────────────────────${C_RESET}"
+echo ""
+echo -e "  ${C_BOLD}Node:${C_RESET}      ${NODE_NAME}"
+echo -e "  ${C_BOLD}FQDN:${C_RESET}      ${NODE_FQDN}"
+echo -e "  ${C_BOLD}Agent port:${C_RESET} ${AGENT_PORT}"
+echo -e "  ${C_BOLD}Data dir:${C_RESET}  ${DATA_DIR}"
+echo ""
+echo -e "  Next steps:"
+echo -e "   1. Open your panel → Admin → Nodes → you should see ${C_BOLD}${NODE_NAME}${C_RESET} online."
+echo -e "   2. Add allocations (ports) to the node so servers can be created on it."
+echo -e "   3. Create a server and pick this node!"
+echo ""
+echo -e "  Useful commands:"
+echo -e "   Logs:    cd /opt/raven-agent && docker compose logs -f agent"
+echo -e "   Restart: cd /opt/raven-agent && docker compose restart agent"
+echo -e "   Remove:  cd /opt/raven-agent && docker compose down"
+echo ""

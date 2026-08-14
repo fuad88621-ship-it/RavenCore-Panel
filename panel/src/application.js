@@ -72,7 +72,7 @@ export async function applicationRoutes(fastify) {
       install_command: egg.skip_install ? null : egg.default_install_command,
       memory_mb: mem, disk_mb: disk, cpu: cpuPct, swap_mb: swap, io: ioVal, env: mergedEnv, mounts: [],
       mount_target: egg.mount_target || '/home/container',
-    }).then(async (res) => {
+    }, { node }).then(async (res) => {
       await q(`UPDATE servers SET container_id = $1, status = 'offline' WHERE id = $2`, [res.container_id, server.id]);
     }).catch(async (e) => {
       console.error('[api] agent create failed:', e.message);
@@ -86,7 +86,7 @@ export async function applicationRoutes(fastify) {
     if (!hasPermission(req.apiKey, 'servers.delete')) return reply.code(403).send({ error: 'Missing permission: servers.delete' });
     const server = await q1(`SELECT * FROM servers WHERE id = $1`, [req.params.id]);
     if (!server) return reply.code(404).send({ error: 'Server not found' });
-    try { await agentRequest(`/servers/${server.uuid}`, 'DELETE'); } catch {}
+    try { await agentRequestFor(server.uuid, `/servers/${server.uuid}`, 'DELETE'); } catch {}
     await q(`UPDATE allocations SET server_id = NULL WHERE server_id = $1`, [server.id]);
     await q(`DELETE FROM servers WHERE id = $1`, [server.id]);
     return { ok: true };
@@ -98,7 +98,7 @@ export async function applicationRoutes(fastify) {
     if (!server) return reply.code(404).send({ error: 'Server not found' });
     const { action } = req.body || {};
     if (!['start', 'stop', 'restart', 'kill'].includes(action)) return reply.code(400).send({ error: 'Invalid action' });
-    const res = await agentRequest(`/servers/${server.uuid}/power`, 'POST', { action });
+    const res = await agentRequestFor(server.uuid, `/servers/${server.uuid}/power`, 'POST', { action });
     const status = action === 'start' ? 'running' : (action === 'stop' || action === 'kill') ? 'offline' : server.status;
     await q(`UPDATE servers SET status = $1 WHERE id = $2`, [status, server.id]);
     return { ok: true, status: res.status || status };

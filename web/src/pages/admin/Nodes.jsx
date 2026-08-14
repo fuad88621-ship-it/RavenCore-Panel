@@ -3,6 +3,22 @@ import { api } from '../../api.js';
 import NumberInput from '../../components/NumberInput.jsx';
 import { Badge, Card, GlowButton, Icons, SectionHeader, Select, ShineCard, useConfirm, useToast, cn } from '../../components/ui.jsx';
 
+function formatMb(mb) {
+  if (!mb) return '0 MB';
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+  return `${Math.round(mb)} MB`;
+}
+
+function fmtUptime(sec) {
+  if (!sec) return '—';
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
 function AllocationsTab({ node }) {
   const [allocations, setAllocations] = useState([]);
   const [ip, setIp] = useState('0.0.0.0');
@@ -328,6 +344,85 @@ export default function Nodes() {
         }
       />
       {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+
+      {/* Connect a new VPS — one-command installer */}
+      <Card className="mb-6 p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+              <Icons.Plus className="h-4 w-4 text-violet-300" /> Connect a new VPS as a node
+            </h3>
+            <p className="mt-1 text-xs text-zinc-500">
+              Run this on the new VPS (as root). It installs Docker + the agent and registers itself here automatically.
+            </p>
+          </div>
+          <button
+            className="btn-ghost !px-3 !py-1.5 text-xs"
+            onClick={() => { navigator.clipboard?.writeText('bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh)'); }}
+          >
+            <Icons.Copy className="h-3.5 w-3.5" /> Copy command
+          </button>
+        </div>
+        <pre className="mt-3 overflow-x-auto rounded-xl border border-white/[0.06] bg-black/40 p-3 font-mono text-xs text-emerald-300">bash &lt;(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh)</pre>
+        <p className="mt-2 text-[11px] text-zinc-500">
+          The script will ask for your panel URL and an <span className="text-zinc-300">Application API key</span> with the{' '}
+          <span className="font-mono text-zinc-300">node:create</span> permission (create one under <span className="text-zinc-300">Application API</span>).
+        </p>
+      </Card>
+
+      {/* Live node health */}
+      {health.length > 0 && (
+        <div className="mb-6">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-white">Live Node Health</h3>
+            <span className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+              refreshes every 15s
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {health.map((h) => {
+              const s = h.stats;
+              const memPct = s && s.memory_total_mb ? Math.min(100, (s.memory_used_mb / s.memory_total_mb) * 100) : 0;
+              const diskPct = s && s.disk_total_mb ? Math.min(100, (s.disk_used_mb / s.disk_total_mb) * 100) : 0;
+              return (
+                <Card key={h.id} className="p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <span className={cn('h-2.5 w-2.5 rounded-full', h.online ? 'bg-emerald-400 shadow-[0_0_8px_rgb(52_211_153/0.6)]' : 'bg-red-500')} />
+                      <span className="text-sm font-semibold text-white">{h.name}</span>
+                    </div>
+                    <span className="font-mono text-[11px] text-zinc-500">{h.fqdn}:{h.port}</span>
+                  </div>
+                  {!h.online ? (
+                    <p className="py-4 text-center text-xs text-red-400">Node unreachable — agent offline</p>
+                  ) : (
+                    <div className="space-y-2.5">
+                      <div>
+                        <div className="mb-1 flex justify-between text-[11px] text-zinc-500"><span>CPU</span><span className="font-mono text-zinc-300">{s.cpu}%</span></div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className={cn('h-full', s.cpu > 80 ? 'bg-red-500' : 'bg-violet-500')} style={{ width: `${Math.min(100, s.cpu)}%` }} /></div>
+                      </div>
+                      <div>
+                        <div className="mb-1 flex justify-between text-[11px] text-zinc-500"><span>Memory</span><span className="font-mono text-zinc-300">{formatMb(s.memory_used_mb)} / {formatMb(s.memory_total_mb)}</span></div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className={cn('h-full', memPct > 80 ? 'bg-red-500' : 'bg-emerald-500')} style={{ width: `${memPct}%` }} /></div>
+                      </div>
+                      <div>
+                        <div className="mb-1 flex justify-between text-[11px] text-zinc-500"><span>Disk</span><span className="font-mono text-zinc-300">{formatMb(s.disk_used_mb)} / {formatMb(s.disk_total_mb)}</span></div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className={cn('h-full', diskPct > 80 ? 'bg-red-500' : 'bg-sky-500')} style={{ width: `${diskPct}%` }} /></div>
+                      </div>
+                      <div className="flex items-center justify-between border-t border-white/[0.05] pt-2 text-[11px] text-zinc-500">
+                        <span>Load <span className="font-mono text-zinc-300">{s.load?.[0] ?? 0}</span></span>
+                        <span>Uptime <span className="font-mono text-zinc-300">{fmtUptime(s.uptime_seconds)}</span></span>
+                        <span>Containers <span className="font-mono text-zinc-300">{s.containers?.running}/{s.containers?.total}</span></span>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <Card className="mb-4 space-y-4">

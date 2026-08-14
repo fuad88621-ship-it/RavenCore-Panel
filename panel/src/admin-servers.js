@@ -214,12 +214,12 @@ export async function adminServerRoutes(fastify) {
       mount_target: egg.mount_target || '/home/container',
       sftp_password: sftpPassword,
       allocation_port: defaultPort,
-    }).then(async (res) => {
+    }, { node }).then(async (res) => {
       await q(`UPDATE servers SET container_id = $1, status = 'offline' WHERE id = $2`, [res.container_id, server.id]);
       // Auto-start when installed if requested
       if (start_on_install) {
         try {
-          await agentRequest(`/servers/${server.uuid}/power`, 'POST', { action: 'start' });
+          await agentRequestFor(server.uuid, `/servers/${server.uuid}/power`, 'POST', { action: 'start' });
           await q(`UPDATE servers SET status = 'running' WHERE id = $1`, [server.id]);
         } catch {}
       }
@@ -265,7 +265,7 @@ export async function adminServerRoutes(fastify) {
     // Apply spec changes on the agent (rebuilds container)
     if (startup_command !== undefined || env !== undefined || docker_image !== undefined || memory_mb !== undefined || cpu !== undefined || disk_mb !== undefined) {
       try {
-        await agentRequest(`/servers/${server.uuid}/spec`, 'PATCH', {
+        await agentRequestFor(server.uuid, `/servers/${server.uuid}/spec`, 'PATCH', {
           startup_command: startup_command !== undefined ? startup_command : server.startup_command,
           env: env !== undefined ? env : server.env,
           image: docker_image !== undefined ? docker_image : server.docker_image,
@@ -285,7 +285,7 @@ export async function adminServerRoutes(fastify) {
     const server = await q1(`SELECT * FROM servers WHERE id = $1`, [req.params.id]);
     if (!server) return reply.code(404).send({ error: 'Server not found' });
     try {
-      await agentRequest(`/servers/${server.uuid}`, 'DELETE');
+      await agentRequestFor(server.uuid, `/servers/${server.uuid}`, 'DELETE');
     } catch (e) {
       console.error('[admin] agent delete failed:', e.message);
     }
@@ -301,7 +301,7 @@ export async function adminServerRoutes(fastify) {
     const { action } = req.body || {};
     if (!['start', 'stop', 'restart', 'kill'].includes(action)) return reply.code(400).send({ error: 'Invalid action' });
     if (server.status === 'suspended') return reply.code(403).send({ error: 'Server suspended' });
-    const res = await agentRequest(`/servers/${server.uuid}/power`, 'POST', { action });
+    const res = await agentRequestFor(server.uuid, `/servers/${server.uuid}/power`, 'POST', { action });
     const status = action === 'start' ? 'running' : (action === 'stop' || action === 'kill') ? 'offline' : server.status;
     await q(`UPDATE servers SET status = $1 WHERE id = $2`, [status, server.id]);
     return { ok: true, status: res.status || status };
@@ -311,7 +311,7 @@ export async function adminServerRoutes(fastify) {
   fastify.post('/api/admin/servers/:id/suspend', { preHandler: requireAdmin }, async (req, reply) => {
     const server = await q1(`SELECT * FROM servers WHERE id = $1`, [req.params.id]);
     if (!server) return reply.code(404).send({ error: 'Server not found' });
-    try { await agentRequest(`/servers/${server.uuid}/power`, 'POST', { action: 'kill' }); } catch {}
+    try { await agentRequestFor(server.uuid, `/servers/${server.uuid}/power`, 'POST', { action: 'kill' }); } catch {}
     await q(`UPDATE servers SET status = 'suspended' WHERE id = $1`, [server.id]);
     return { ok: true };
   });
@@ -326,7 +326,7 @@ export async function adminServerRoutes(fastify) {
     const server = await getServerWithDetails(req.params.id);
     if (!server) return reply.code(404).send({ error: 'Server not found' });
     await q(`UPDATE servers SET status = 'installing' WHERE id = $1`, [server.id]);
-    agentRequest(`/servers/${server.uuid}/reinstall`, 'POST', {
+    agentRequestFor(server.uuid, `/servers/${server.uuid}/reinstall`, 'POST', {
       image: server.egg_image,
       install_command: server.egg_skip_install ? null : server.egg_install,
     }).then(async () => {

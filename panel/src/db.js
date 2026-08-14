@@ -223,6 +223,31 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS server_metrics (
+  id BIGSERIAL PRIMARY KEY,
+  server_id UUID NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  cpu REAL NOT NULL DEFAULT 0,
+  memory_mb REAL NOT NULL DEFAULT 0,
+  disk_mb REAL NOT NULL DEFAULT 0,
+  network_rx_mb REAL NOT NULL DEFAULT 0,
+  network_tx_mb REAL NOT NULL DEFAULT 0,
+  running BOOLEAN NOT NULL DEFAULT false,
+  sampled_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_server_metrics_server_time ON server_metrics (server_id, sampled_at);
+
+CREATE TABLE IF NOT EXISTS alerts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  server_id UUID REFERENCES servers(id) ON DELETE CASCADE,
+  node_id UUID REFERENCES nodes(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  message TEXT NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'warning',
+  read BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_alerts_read ON alerts (read, created_at);
 `;
 
 export async function initDb() {
@@ -284,14 +309,14 @@ async function seedDefaults() {
     await pool.query(
       `UPDATE nodes SET uuid=$1, name=$2, location_id=$3, fqdn=$4, port=$5, scheme=$6,
        memory_mb=$7, memory_overallocate=$8, disk_mb=$9, disk_overallocate=$10,
-       cpu_cores=$11, cpu_overallocate=$12, daemon_token=$13, enabled=true
+       cpu_cores=$11, cpu_overallocate=$12, daemon_token=$13, enabled=true, behind_proxy=true
        WHERE name=$14`,
       [...nodeData, config.node.name]
     );
   } else {
     await pool.query(
-      `INSERT INTO nodes (uuid, name, location_id, fqdn, port, scheme, memory_mb, memory_overallocate, disk_mb, disk_overallocate, cpu_cores, cpu_overallocate, daemon_token)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      `INSERT INTO nodes (uuid, name, location_id, fqdn, port, scheme, visibility, behind_proxy, memory_mb, memory_overallocate, disk_mb, disk_overallocate, cpu_cores, cpu_overallocate, daemon_token)
+       VALUES ($1,$2,$3,$4,$5,$6,'public',true,$7,$8,$9,$10,$11,$12,$13)`,
       nodeData
     );
   }

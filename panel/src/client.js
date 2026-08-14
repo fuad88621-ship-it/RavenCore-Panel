@@ -1,7 +1,8 @@
 import path from 'node:path';
 import { q, q1 } from './db.js';
 import { requireAuth } from './auth.js';
-import { agentRequest, consoleToken } from './agent-client.js';
+import { agentRequest, agentRequestFor, consoleToken } from './agent-client.js';
+import { getServerMetrics } from './metrics.js';
 import { renderStartup } from './admin-servers.js';
 import { createDatabase, deleteDatabase, rotateDatabasePassword } from './admin-databases.js';
 
@@ -19,7 +20,8 @@ async function logActivity(serverId, userId, action, metadata = {}) {
 async function getServerForUser(req, reply) {
   const server = await q1(
     `SELECT s.*, e.name AS egg_name, e.startup_command AS egg_startup, e.docker_image AS egg_image,
-            n.name AS node_name, n.fqdn AS node_fqdn, nest.name AS nest_name,
+            n.name AS node_name, n.fqdn AS node_fqdn, n.port AS node_port, n.scheme AS node_scheme, n.behind_proxy AS node_behind_proxy,
+            nest.name AS nest_name,
             a.ip AS allocation_ip, a.port AS allocation_port
      FROM servers s
      JOIN eggs e ON e.id = s.egg_id
@@ -121,7 +123,7 @@ export async function clientRoutes(fastify) {
     const { action } = req.body || {};
     if (!['start', 'stop', 'restart', 'kill'].includes(action)) return reply.code(400).send({ error: 'Invalid action' });
     if (server.status === 'suspended') return reply.code(403).send({ error: 'Server suspended' });
-    const res = await agentRequest(`/servers/${server.uuid}/power`, 'POST', { action });
+    const res = await agentRequestFor(server.uuid, `/servers/${server.uuid}/power`, 'POST', { action });
     const status = action === 'start' ? 'running' : (action === 'stop' || action === 'kill') ? 'offline' : server.status;
     await q(`UPDATE servers SET status = $1 WHERE id = $2`, [status, server.id]);
     await logActivity(server.id, req.user.id, `server.${action}`);
@@ -134,7 +136,7 @@ export async function clientRoutes(fastify) {
     if (!server) return;
     const { command } = req.body || {};
     if (!command) return reply.code(400).send({ error: 'command required' });
-    await agentRequest(`/servers/${server.uuid}/command`, 'POST', { command });
+    await agentRequestFor(server.uuid, `/servers/${server.uuid}/command`, 'POST', { command });
     return { ok: true };
   });
 
@@ -143,8 +145,13 @@ export async function clientRoutes(fastify) {
     const server = await getServerForUser(req, reply);
     if (!server) return;
     const token = consoleToken(server);
+    // Behind a proxy (Caddy/nginx) → wss://fqdn (no port). Direct agent → ws://fqdn:port.
+    const wsScheme = server.node_scheme === 'https' ? 'wss' : 'ws';
+    const host = server.node_behind_proxy
+      ? server.node_fqdn
+      : `${server.node_fqdn}:${server.node_port || 8080}`;
     return {
-      socket: `wss://${server.node_fqdn}/servers/${server.uuid}/ws?token=${token}`,
+      socket: `${wsScheme}://${host}/servers/${server.uuid}/ws?token=${token}`,
       token,
     };
   });
@@ -154,19 +161,19 @@ export async function clientRoutes(fastify) {
     const server = await getServerForUser(req, reply);
     if (!server) return;
     const path = req.query.path || '/';
-    return agentRequest(`/servers/${server.uuid}/files?path=${encodeURIComponent(path)}`);
+    return agentRequestFor(server.uuid, `/servers/${server.uuid}/files?path=${encodeURIComponent(path)}`);
   });
 
   fastify.post('/api/client/servers/:id/files/read', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    return agentRequest(`/servers/${server.uuid}/files/read`, 'POST', req.body);
+    return agentRequestFor(server.uuid, `/servers/${server.uuid}/files/read`, 'POST', req.body);
   });
 
   fastify.post('/api/client/servers/:id/files/write', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    const res = await agentRequest(`/servers/${server.uuid}/files/write`, 'POST', req.body);
+    const res = await agentRequestFor(server.uuid, `/servers/${server.uuid}/files/write`, 'POST', req.body);
     await logActivity(server.id, req.user.id, 'file.write', { path: req.body.path });
     return res;
   });
@@ -174,37 +181,37 @@ export async function clientRoutes(fastify) {
   fastify.post('/api/client/servers/:id/files/delete', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    return agentRequest(`/servers/${server.uuid}/files/delete`, 'POST', req.body);
+    return agentRequestFor(server.uuid, `/servers/${server.uuid}/files/delete`, 'POST', req.body);
   });
 
   fastify.post('/api/client/servers/:id/files/rename', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    return agentRequest(`/servers/${server.uuid}/files/rename`, 'POST', req.body);
+    return agentRequestFor(server.uuid, `/servers/${server.uuid}/files/rename`, 'POST', req.body);
   });
 
   fastify.post('/api/client/servers/:id/files/archive', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    return agentRequest(`/servers/${server.uuid}/files/archive`, 'POST', req.body);
+    return agentRequestFor(server.uuid, `/servers/${server.uuid}/files/archive`, 'POST', req.body);
   });
 
   fastify.post('/api/client/servers/:id/files/extract', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    return agentRequest(`/servers/${server.uuid}/files/extract`, 'POST', req.body);
+    return agentRequestFor(server.uuid, `/servers/${server.uuid}/files/extract`, 'POST', req.body);
   });
 
   fastify.post('/api/client/servers/:id/files/mkdir', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    return agentRequest(`/servers/${server.uuid}/files/mkdir`, 'POST', req.body);
+    return agentRequestFor(server.uuid, `/servers/${server.uuid}/files/mkdir`, 'POST', req.body);
   });
 
   fastify.get('/api/client/servers/:id/files/download', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    const agentRes = await agentRequest(`/servers/${server.uuid}/files/download?path=${encodeURIComponent(req.query.path)}`, 'GET', null, { raw: true });
+    const agentRes = await agentRequestFor(server.uuid, `/servers/${server.uuid}/files/download?path=${encodeURIComponent(req.query.path)}`, 'GET', null, { raw: true });
     reply.header('Content-Disposition', agentRes.headers['content-disposition'] || `attachment; filename="${path.basename(req.query.path)}"`);
     reply.type(agentRes.headers['content-type'] || 'application/octet-stream');
     return agentRes.body;
@@ -214,14 +221,51 @@ export async function clientRoutes(fastify) {
   fastify.get('/api/client/servers/:id/resources', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    return agentRequest(`/servers/${server.uuid}/resources`);
+    return agentRequestFor(server.uuid, `/servers/${server.uuid}/resources`);
+  });
+
+  // Resource history (live graphs)
+  fastify.get('/api/client/servers/:id/metrics', { preHandler: requireAuth }, async (req, reply) => {
+    const server = await getServerForUser(req, reply);
+    if (!server) return;
+    const hours = parseInt(req.query.hours) || 24;
+    return { metrics: await getServerMetrics(server.id, hours) };
+  });
+
+  // Alerts for my servers
+  fastify.get('/api/client/alerts', { preHandler: requireAuth }, async (req) => {
+    const alerts = await q(
+      `SELECT a.id, a.type, a.message, a.severity, a.read, a.created_at, s.name AS server_name
+       FROM alerts a JOIN servers s ON s.id = a.server_id
+       WHERE s.user_id = $1
+       ORDER BY a.created_at DESC LIMIT 50`,
+      [req.user.id]
+    );
+    const unread = await q1(
+      `SELECT COUNT(*)::int AS n FROM alerts a JOIN servers s ON s.id = a.server_id
+       WHERE s.user_id = $1 AND a.read = false`,
+      [req.user.id]
+    );
+    return { alerts, unread: unread?.n || 0 };
+  });
+
+  // Mark all my alerts as read
+  fastify.post('/api/client/alerts/read', { preHandler: requireAuth }, async (req) => {
+    await q(
+      `UPDATE alerts SET read = true WHERE id IN (
+         SELECT a.id FROM alerts a JOIN servers s ON s.id = a.server_id
+         WHERE s.user_id = $1 AND a.read = false
+       )`,
+      [req.user.id]
+    );
+    return { ok: true };
   });
 
   // Install log
   fastify.get('/api/client/servers/:id/install-log', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    const log = await agentRequest(`/servers/${server.uuid}/install-log`, 'GET');
+    const log = await agentRequestFor(server.uuid, `/servers/${server.uuid}/install-log`, 'GET');
     return { log };
   });
 
@@ -271,7 +315,7 @@ export async function clientRoutes(fastify) {
   fastify.get('/api/client/servers/:id/plugins', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    return await agentRequest(`/servers/${server.uuid}/plugins`, 'GET');
+    return await agentRequestFor(server.uuid, `/servers/${server.uuid}/plugins`, 'GET');
   });
 
   fastify.post('/api/client/servers/:id/plugins/install', { preHandler: requireAuth }, async (req, reply) => {
@@ -286,7 +330,7 @@ export async function clientRoutes(fastify) {
     const version = (versions || []).find((v) => v.files && v.files.length > 0);
     if (!version) return reply.code(404).send({ error: 'No downloadable version found' });
     const file = version.files[0];
-    const result = await agentRequest(`/servers/${server.uuid}/plugins/install`, 'POST', {
+    const result = await agentRequestFor(server.uuid, `/servers/${server.uuid}/plugins/install`, 'POST', {
       url: file.url, filename: file.filename,
     });
     return { ok: true, filename: result.filename, size: result.size, version: version.version_number };
@@ -295,7 +339,7 @@ export async function clientRoutes(fastify) {
   fastify.delete('/api/client/servers/:id/plugins/:filename', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    return await agentRequest(`/servers/${server.uuid}/plugins/${encodeURIComponent(req.params.filename)}`, 'DELETE');
+    return await agentRequestFor(server.uuid, `/servers/${server.uuid}/plugins/${encodeURIComponent(req.params.filename)}`, 'DELETE');
   });
 
   // Databases
@@ -358,7 +402,7 @@ export async function clientRoutes(fastify) {
     }
     const newStartup = renderStartup(server.egg_startup, merged);
     await q(`UPDATE servers SET env = $1, startup_command = $2 WHERE id = $3`, [JSON.stringify(merged), newStartup, server.id]);
-    await agentRequest(`/servers/${server.uuid}/spec`, 'PATCH', { env: merged, startup_command: newStartup });
+    await agentRequestFor(server.uuid, `/servers/${server.uuid}/spec`, 'PATCH', { env: merged, startup_command: newStartup });
     return { ok: true };
   });
 
@@ -378,7 +422,7 @@ export async function clientRoutes(fastify) {
     const server = await getServerForUser(req, reply);
     if (!server) return;
     await q(`UPDATE servers SET status = 'installing' WHERE id = $1`, [server.id]);
-    agentRequest(`/servers/${server.uuid}/reinstall`, 'POST', {
+    agentRequestFor(server.uuid, `/servers/${server.uuid}/reinstall`, 'POST', {
       image: server.egg_image,
       install_command: null,
     }).then(async () => {
@@ -395,7 +439,7 @@ export async function clientRoutes(fastify) {
     const server = await getServerForUser(req, reply);
     if (!server) return;
     try {
-      await agentRequest(`/servers/${server.uuid}`, 'DELETE');
+      await agentRequestFor(server.uuid, `/servers/${server.uuid}`, 'DELETE');
     } catch (e) {
       console.error('[client] agent delete failed:', e.message);
     }
