@@ -44,14 +44,22 @@ update_agent() {
   TARBALL="$(mktemp)"
   curl -fsSL --max-time 120 -o "$TARBALL" "$REPO_TARBALL" \
     || fail "Could not download the agent source."
-  tar -xzf "$TARBALL" -C "$AGENT_DIR" --strip-components=1 2>/dev/null \
+  # Extract ONLY the agent/ directory into a temp dir, then copy it over.
+  # Never extract the whole repo — the repo root has the PANEL's
+  # docker-compose.yml which would overwrite this node's agent compose.
+  TMPDIR="$(mktemp -d)"
+  tar -xzf "$TARBALL" -C "$TMPDIR" --strip-components=1 2>/dev/null \
     || fail "Could not extract the agent source."
-  rm -f "$TARBALL"
+  rm -f "$AGENT_DIR/agent/Dockerfile"
+  rm -rf "$AGENT_DIR/agent/src"
+  cp -r "$TMPDIR/agent/Dockerfile" "$TMPDIR/agent/package.json" "$TMPDIR/agent/package-lock.json" "$TMPDIR/agent/src" "$AGENT_DIR/agent/" 2>/dev/null \
+    || cp -r "$TMPDIR/agent/." "$AGENT_DIR/agent/"
+  rm -rf "$TMPDIR" "$TARBALL"
   COMPOSE="docker compose"
   docker compose version >/dev/null 2>&1 || COMPOSE="docker-compose"
   cd "$AGENT_DIR"
   info "Rebuilding the agent… (takes a few minutes)"
-  if ! $COMPOSE up -d --build 2>&1 | tee /tmp/raven-agent-update.log | tail -15; then
+  if ! $COMPOSE up -d --build --remove-orphans 2>&1 | tee /tmp/raven-agent-update.log | tail -15; then
     fail "Agent update failed. See output above."
   fi
   sleep 4
@@ -295,7 +303,7 @@ EOF
 # ── Start the agent ───────────────────────────────────────────────
 info "Building and starting the agent… (first build takes a few minutes)"
 cd "$AGENT_DIR"
-if ! $COMPOSE up -d --build 2>&1 | tee /tmp/raven-agent-build.log | tail -20; then
+if ! $COMPOSE up -d --build --remove-orphans 2>&1 | tee /tmp/raven-agent-build.log | tail -20; then
   echo ""
   fail "Agent build/start failed. Last build output above — or run: cd /opt/raven-agent && ${COMPOSE} logs agent"
 fi
