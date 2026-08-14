@@ -81,22 +81,73 @@ function StatCard({ icon, label, value, sub, bar, index, copy }) {
 function ConsoleTab({ server }) {
   const termRef = useRef(null);
   const wsRef = useRef(null);
+  const connectRef = useRef(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState('');
   const [cmd, setCmd] = useState('');
+  const [cmdHistory, setCmdHistory] = useState([]);
+  const [histIdx, setHistIdx] = useState(-1);
+  const [reconnecting, setReconnecting] = useState(false);
 
   useEffect(() => {
     const installing = server.status === 'installing';
     let term;
     let pollId;
     let startupTimer;
+    let reconnectTimer;
     let disposed = false;
-    let onVis;
     let fitAddon;
     let resizeObserver;
+    let everConnected = false;
+    let attempt = 0;
 
     function setConn(v) { if (!disposed) setConnected(v); }
     function setErr(v) { if (!disposed) setError(v); }
+    function setReconn(v) { if (!disposed) setReconnecting(v); }
+
+    function scheduleReconnect() {
+      if (disposed) return;
+      setReconn(true);
+      clearTimeout(reconnectTimer);
+      const delay = Math.min(10000, 3000 * Math.pow(2, attempt));
+      attempt++;
+      reconnectTimer = setTimeout(connect, delay);
+    }
+
+    async function connect() {
+      if (disposed) return;
+      try {
+        try { wsRef.current?.close(); } catch {}
+        const { socket } = await api.console(server.id);
+        if (disposed) return;
+        const ws = new WebSocket(socket);
+        wsRef.current = ws;
+        ws.onopen = () => {
+          setConn(true);
+          setReconn(false);
+          setErr('');
+          attempt = 0;
+          if (!everConnected) {
+            term.clear();
+            term.writeln('\x1b[32m● Connected. Server output will appear here.\x1b[0m');
+            everConnected = true;
+          } else {
+            term.writeln('\r\n\x1b[32m● Reconnected.\x1b[0m');
+          }
+        };
+        ws.onmessage = (ev) => term.write(ev.data);
+        ws.onclose = () => {
+          setConn(false);
+          term.writeln('\r\n\x1b[31m● Disconnected. Reconnecting…\x1b[0m');
+          scheduleReconnect();
+        };
+        ws.onerror = () => { /* onclose follows */ };
+      } catch (e) {
+        setErr(e.message);
+        scheduleReconnect();
+      }
+    }
+    connectRef.current = connect;
 
     async function init() {
       term = new Terminal({
@@ -144,34 +195,11 @@ function ConsoleTab({ server }) {
       }
 
       term.writeln('\x1b[90mConnecting to console…\x1b[0m');
-
-      const { socket } = await api.console(server.id);
-      if (disposed) return;
-
-      const ws = new WebSocket(socket);
-      wsRef.current = ws;
-      ws.onopen = () => {
-        setConn(true);
-        term.clear();
-        term.writeln('\x1b[32m● Connected. Server output will appear here.\x1b[0m');
-      };
-      ws.onmessage = (ev) => term.write(ev.data);
-      ws.onclose = () => {
-        setConn(false);
-        term.writeln('\r\n\x1b[31m● Disconnected.\x1b[0m');
-      };
-      ws.onerror = () => setErr('WebSocket error');
-
       term.onData((data) => {
-        if (ws.readyState === WebSocket.OPEN) ws.send(data);
+        const ws = wsRef.current;
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(data);
       });
-
-      onVis = () => {
-        if (!document.hidden && !disposed) {
-          try { term.resize(term.cols, term.rows); } catch {}
-        }
-      };
-      document.addEventListener('visibilitychange', onVis);
+      await connect();
     }
 
     init().catch((e) => setErr(e.message));
@@ -180,14 +208,48 @@ function ConsoleTab({ server }) {
       disposed = true;
       if (pollId) clearInterval(pollId);
       if (startupTimer) clearTimeout(startupTimer);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       try { resizeObserver?.disconnect(); } catch {}
       try { wsRef.current?.close(); } catch {}
       try { term?.dispose(); } catch {}
-      if (onVis) document.removeEventListener('visibilitychange', onVis);
     };
   }, [server.id, server.status]);
 
   const installing = server.status === 'installing';
+
+  function submitCmd(e) {
+    e.preventDefault();
+    const value = cmd.trim();
+    if (!value) return;
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(value + '\n');
+    } else {
+      api.command(server.id, value).catch(() => {});
+    }
+    setCmdHistory((h) => [...h.slice(-49), value]);
+    setHistIdx(-1);
+    setCmd('');
+  }
+
+  function onCmdKeyDown(e) {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHistIdx((i) => {
+        const next = i === -1 ? cmdHistory.length - 1 : Math.max(0, i - 1);
+        if (cmdHistory[next] !== undefined) setCmd(cmdHistory[next]);
+        return next;
+      });
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHistIdx((i) => {
+        const next = i + 1;
+        if (next >= cmdHistory.length) { setCmd(''); return -1; }
+        setCmd(cmdHistory[next]);
+        return next;
+      });
+    }
+  }
 
   return (
     <div>
@@ -200,33 +262,29 @@ function ConsoleTab({ server }) {
         ) : (
           <span className={cn('chip border', connected ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : 'border-red-500/20 bg-red-500/10 text-red-400')}>
             <span className={cn('h-1.5 w-1.5 rounded-full', connected ? 'bg-emerald-400' : 'bg-red-500')} />
-            {connected ? 'Connected' : 'Disconnected'}
+            {connected ? 'Connected' : reconnecting ? 'Reconnecting…' : 'Disconnected'}
           </span>
         )}
         {error && <span className="text-xs text-red-400">{error}</span>}
+        {!installing && !connected && (
+          <button
+            className="btn-ghost !px-2 !py-1 text-xs"
+            onClick={() => { setReconnecting(false); connectRef.current?.(); }}
+            disabled={reconnecting}
+          >
+            Reconnect
+          </button>
+        )}
       </div>
       <div ref={termRef} className="h-[50vh] min-h-[280px] max-h-[560px] overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0f]" />
-      <form
-        className="mt-2 flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const value = cmd.trim();
-          if (!value) return;
-          const ws = wsRef.current;
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(value + '\n');
-          } else {
-            api.command(server.id, value).catch(() => {});
-          }
-          setCmd('');
-        }}
-      >
+      <form className="mt-2 flex gap-2" onSubmit={submitCmd}>
         <input
           className="input flex-1 font-mono"
           placeholder={installing ? 'Installing… commands unavailable' : 'Type a command and press Enter…'}
           value={cmd}
           disabled={installing}
           onChange={(e) => setCmd(e.target.value)}
+          onKeyDown={onCmdKeyDown}
           aria-label="Console command input"
         />
         <button type="submit" className="btn-primary shrink-0" disabled={installing}>Send</button>
