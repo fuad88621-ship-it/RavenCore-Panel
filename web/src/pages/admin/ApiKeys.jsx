@@ -90,7 +90,7 @@ export default function ApiKeys() {
               })}
             </div>
           </div>
-          <GlowButton>Create key</GlowButton>
+          <GlowButton type="submit">Create key</GlowButton>
         </form>
       </Card>
 
