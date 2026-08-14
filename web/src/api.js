@@ -111,6 +111,7 @@ export const api = {
     suspendServer: (id) => req(`/api/admin/servers/${id}/suspend`, { method: 'POST' }),
     unsuspendServer: (id) => req(`/api/admin/servers/${id}/unsuspend`, { method: 'POST' }),
     reinstallServer: (id) => req(`/api/admin/servers/${id}/reinstall`, { method: 'POST' }),
+    transferServer: (id, nodeId) => req(`/api/admin/servers/${id}/transfer`, { method: 'POST', body: JSON.stringify({ node_id: nodeId }) }),
     nests: () => req('/api/admin/nests'),
     createNest: (name, description) => req('/api/admin/nests', { method: 'POST', body: JSON.stringify({ name, description }) }),
     deleteNest: (id) => req(`/api/admin/nests/${id}`, { method: 'DELETE' }),
