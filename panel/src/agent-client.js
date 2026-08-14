@@ -20,7 +20,7 @@ export async function agentRequest(path, method = 'GET', body, opts = {}) {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body != null ? JSON.stringify(body) : undefined,
   });
   if (opts.raw) {
     if (!res.ok) throw new Error(`Agent error (${res.status})`);
