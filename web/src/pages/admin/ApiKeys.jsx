@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Card, GlowButton, Icons, SectionHeader } from '../../components/ui.jsx';
+import { Card, GlowButton, Icons, SectionHeader, useConfirm } from '../../components/ui.jsx';
 
 const PERMISSIONS = ['*', 'servers.read', 'servers.create', 'servers.delete', 'servers.power', 'users.read', 'users.create', 'nodes.read', 'locations.read', 'nests.read'];
 
 export default function ApiKeys() {
   const [keys, setKeys] = useState([]);
+  const confirm = useConfirm();
   const [description, setDescription] = useState('');
   const [permissions, setPermissions] = useState(['*']);
   const [newKey, setNewKey] = useState(null);
@@ -35,7 +36,7 @@ export default function ApiKeys() {
   }
 
   async function remove(id) {
-    if (!confirm('Delete this API key? Applications using it will stop working.')) return;
+    if (!await confirm('Delete this API key? Applications using it will stop working.')) return;
     await api.admin.deleteApiKey(id);
     load();
   }

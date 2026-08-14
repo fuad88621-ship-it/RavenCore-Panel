@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import { Routes, Route, Navigate, useNavigate, useLocation, NavLink, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from './api.js';
-import { AuroraBackground, CursorGlow, ParticlesBackground, Icons, Toasts, ToastContext, useToasts, cn, Badge } from './components/ui.jsx';
+import { AuroraBackground, ConfirmProvider, CursorGlow, ParticlesBackground, Icons, Toasts, ToastContext, useToasts, cn, Badge } from './components/ui.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -428,6 +428,7 @@ export default function App() {
 
   return (
     <ToastContext.Provider value={toastApi}>
+      <ConfirmProvider>
       <AuthContext.Provider value={authValue}>
         <SettingsContext.Provider value={settings}>
           <AnimatePresence mode="wait">
@@ -443,6 +444,7 @@ export default function App() {
           </AnimatePresence>
         </SettingsContext.Provider>
       </AuthContext.Provider>
+      </ConfirmProvider>
     </ToastContext.Provider>
   );
 }

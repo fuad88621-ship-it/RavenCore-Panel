@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Badge, Card, GlowButton, Icons, SectionHeader, cn } from '../../components/ui.jsx';
+import { Badge, Card, GlowButton, Icons, SectionHeader, cn, useConfirm } from '../../components/ui.jsx';
 
 export default function Users() {
   const [users, setUsers] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ username: '', email: '', password: '', root_admin: false });
   const [error, setError] = useState('');
+  const confirm = useConfirm();
 
   async function load() {
     try {
@@ -42,7 +43,7 @@ export default function Users() {
   }
 
   async function remove(u) {
-    if (!confirm(`Delete user ${u.username}? This deletes all their servers.`)) return;
+    if (!await confirm(`Delete user ${u.username}? This deletes all their servers.`)) return;
     try {
       await api.admin.deleteUser(u.id);
       load();

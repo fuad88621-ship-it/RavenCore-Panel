@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Badge, Card, GlowButton, Icons, SectionHeader, cn } from '../../components/ui.jsx';
+import { Badge, Card, GlowButton, Icons, SectionHeader, cn, useConfirm } from '../../components/ui.jsx';
 
 function EggDetail({ egg, onBack }) {
   const [data, setData] = useState(null);
@@ -119,6 +119,7 @@ export default function Nests() {
   const [nestName, setNestName] = useState('');
   const [nestDesc, setNestDesc] = useState('');
   const [error, setError] = useState('');
+  const confirm = useConfirm();
 
   async function load() {
     try {
@@ -143,7 +144,7 @@ export default function Nests() {
   }
 
   async function removeNest(n) {
-    if (!confirm(`Delete nest ${n.name}?`)) return;
+    if (!await confirm(`Delete nest ${n.name}?`)) return;
     try {
       await api.admin.deleteNest(n.id);
       load();

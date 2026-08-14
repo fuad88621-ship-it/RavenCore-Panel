@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Card, GlowButton, Icons, SectionHeader } from '../../components/ui.jsx';
+import { Card, GlowButton, Icons, SectionHeader, useConfirm } from '../../components/ui.jsx';
 
 export default function Locations() {
   const [locations, setLocations] = useState([]);
+  const confirm = useConfirm();
   const [showForm, setShowForm] = useState(false);
   const [short, setShort] = useState('');
   const [long, setLong] = useState('');
@@ -32,7 +33,7 @@ export default function Locations() {
   }
 
   async function remove(loc) {
-    if (!confirm(`Delete location ${loc.short}?`)) return;
+    if (!await confirm(`Delete location ${loc.short}?`)) return;
     try {
       await api.admin.deleteLocation(loc.id);
       load();

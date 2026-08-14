@@ -3,7 +3,7 @@ import { api } from '../../api.js';
 import { useAuth } from '../../App.jsx';
 import { useDebouncedCallback } from '../../useDebounce.js';
 import NumberInput from '../../components/NumberInput.jsx';
-import { Card, GlowButton, Icons, MultiSelect, SectionHeader, Select, ShineCard, StatusBadge, cn } from '../../components/ui.jsx';
+import { Card, GlowButton, Icons, MultiSelect, SectionHeader, Select, ShineCard, StatusBadge, cn, useConfirm } from '../../components/ui.jsx';
 
 function Field({ label, hint, children }) {
   return (
@@ -406,6 +406,7 @@ export default function Servers() {
   const [showCreate, setShowCreate] = useState(false);
   const [assigning, setAssigning] = useState(null);
   const [error, setError] = useState('');
+  const confirm = useConfirm();
 
   async function load(s) {
     try {
@@ -466,7 +467,7 @@ export default function Servers() {
   }
 
   async function remove(s) {
-    if (!confirm(`Delete server ${s.name}? This permanently deletes all its files.`)) return;
+    if (!await confirm(`Delete server ${s.name}? This permanently deletes all its files.`)) return;
     try {
       await api.admin.deleteServer(s.id);
       load(search);

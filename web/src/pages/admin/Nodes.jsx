@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../../api.js';
 import NumberInput from '../../components/NumberInput.jsx';
-import { Badge, Card, GlowButton, Icons, SectionHeader, Select, ShineCard, useToast, cn } from '../../components/ui.jsx';
+import { Badge, Card, GlowButton, Icons, SectionHeader, Select, ShineCard, useConfirm, useToast, cn } from '../../components/ui.jsx';
 
 function AllocationsTab({ node }) {
   const [allocations, setAllocations] = useState([]);
@@ -10,6 +10,7 @@ function AllocationsTab({ node }) {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [error, setError] = useState('');
+  const confirm = useConfirm();
   const toast = useToast();
 
   async function load() {
@@ -53,7 +54,7 @@ function AllocationsTab({ node }) {
   }
 
   async function remove(a) {
-    if (!confirm(`Delete allocation ${a.ip}:${a.port}?`)) return;
+    if (!await confirm(`Delete allocation ${a.ip}:${a.port}?`)) return;
     try {
       await api.admin.deleteAllocation(a.id);
       load();
@@ -249,6 +250,7 @@ export default function Nodes() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [openSections, setOpenSections] = useState({ general: true, connection: true, resources: true, security: true });
+  const confirm = useConfirm();
 
   function toggleSection(k) {
     setOpenSections((s) => ({ ...s, [k]: !s[k] }));
@@ -303,7 +305,7 @@ export default function Nodes() {
   }
 
   async function remove(n) {
-    if (!confirm(`Delete node ${n.name}?`)) return;
+    if (!await confirm(`Delete node ${n.name}?`)) return;
     try {
       await api.admin.deleteNode(n.id);
       load();

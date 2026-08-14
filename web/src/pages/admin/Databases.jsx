@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Card, SectionHeader } from '../../components/ui.jsx';
+import { Card, SectionHeader, useConfirm } from '../../components/ui.jsx';
 
 export default function Databases() {
   const [databases, setDatabases] = useState([]);
+  const confirm = useConfirm();
   const [error, setError] = useState('');
 
   async function load() {
@@ -18,7 +19,7 @@ export default function Databases() {
   useEffect(() => { load(); }, []);
 
   async function remove(db) {
-    if (!confirm(`Delete database ${db.database_name}? This cannot be undone.`)) return;
+    if (!await confirm(`Delete database ${db.database_name}? This cannot be undone.`)) return;
     await api.admin.deleteDatabase(db.id);
     load();
   }

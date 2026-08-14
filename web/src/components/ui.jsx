@@ -534,6 +534,51 @@ export function useToasts() {
   return { toasts, push, dismiss };
 }
 
+// ── In-app confirm dialog (replaces native window.confirm) ──
+export const ConfirmContext = createContext(null);
+export function useConfirm() {
+  return useContext(ConfirmContext);
+}
+
+export function ConfirmProvider({ children }) {
+  const [state, setState] = useState(null); // { message, resolve }
+  const confirm = React.useCallback((message) => new Promise((resolve) => {
+    setState({ message, resolve });
+  }), []);
+  const close = (result) => {
+    if (state) state.resolve(result);
+    setState(null);
+  };
+  // Escape cancels; focus the Cancel button when the dialog opens.
+  React.useEffect(() => {
+    if (!state) return;
+    const onKey = (e) => { if (e.key === 'Escape') close(false); };
+    window.addEventListener('keydown', onKey);
+    const btn = dialogRef.current && dialogRef.current.querySelector('.btn-danger');
+    if (btn) btn.focus();
+    return () => window.removeEventListener('keydown', onKey);
+  }, [state]);
+  const dialogRef = React.useRef(null);
+  return (
+    <ConfirmContext.Provider value={confirm}>
+      {children}
+      {state && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <Card ref={dialogRef} className="w-full max-w-sm" role="alertdialog" aria-modal="true" aria-label="Confirm action">
+            <div className="p-5">
+              <p className="text-sm leading-relaxed text-zinc-200">{state.message}</p>
+              <div className="mt-5 flex justify-end gap-2">
+                <button className="btn-ghost" onClick={() => close(false)}>Cancel</button>
+                <button className="btn-danger" onClick={() => close(true)}>Confirm</button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+    </ConfirmContext.Provider>
+  );
+}
+
 // ── Error boundary ───────────────────────────────────────────
 export class ErrorBoundary extends React.Component {
   constructor(props) {

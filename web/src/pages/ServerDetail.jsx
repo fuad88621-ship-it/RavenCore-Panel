@@ -5,7 +5,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { api } from '../api.js';
 import { useDebouncedCallback } from '../useDebounce.js';
-import { Card, ErrorState, Icons, Select, Skeleton, StatusBadge, useToast, cn } from '../components/ui.jsx';
+import { Card, ErrorState, Icons, Select, Skeleton, StatusBadge, useConfirm, useToast, cn } from '../components/ui.jsx';
 
 function StatChip({ label, value }) {
   return (
@@ -886,6 +886,7 @@ function DatabasesTab({ server }) {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [revealed, setRevealed] = useState({});
+  const confirm = useConfirm();
 
   async function load() {
     try {
@@ -910,7 +911,7 @@ function DatabasesTab({ server }) {
   }
 
   async function remove(db) {
-    if (!confirm(`Delete database ${db.database_name}? This cannot be undone.`)) return;
+    if (!await confirm(`Delete database ${db.database_name}? This cannot be undone.`)) return;
     try {
       await api.deleteDatabase(db.id);
       load();
@@ -1044,6 +1045,7 @@ function SettingsTab({ server, onDeleted }) {
   const [saved, setSaved] = useState(false);
   const savedTimer = useRef(null);
   const toast = useToast();
+  const confirm = useConfirm();
 
   useEffect(() => () => {
     if (savedTimer.current) clearTimeout(savedTimer.current);
@@ -1063,7 +1065,7 @@ function SettingsTab({ server, onDeleted }) {
   }
 
   async function reinstall() {
-    if (!confirm('Reinstall wipes dependencies and re-runs the install command. Continue?')) return;
+    if (!await confirm('Reinstall wipes dependencies and re-runs the install command. Continue?')) return;
     try {
       await api.reinstall(server.id);
       toast && toast.push('Reinstall started');
@@ -1074,7 +1076,7 @@ function SettingsTab({ server, onDeleted }) {
   }
 
   async function remove() {
-    if (!confirm(`Delete server ${server.name}? This permanently deletes all its files and cannot be undone.`)) return;
+    if (!await confirm(`Delete server ${server.name}? This permanently deletes all its files and cannot be undone.`)) return;
     try {
       await api.deleteServer(server.id);
       toast && toast.push('Server deleted');
@@ -1116,6 +1118,7 @@ function SchedulesTab({ server }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', cron: '*/5 * * * *', is_active: true, tasks: [{ action: 'command', payload: '' }] });
   const [error, setError] = useState('');
+  const confirm = useConfirm();
 
   async function load() {
     try {
@@ -1149,7 +1152,7 @@ function SchedulesTab({ server }) {
   }
 
   async function remove(s) {
-    if (!confirm(`Delete schedule ${s.name}?`)) return;
+    if (!await confirm(`Delete schedule ${s.name}?`)) return;
     try {
       await api.deleteSchedule(s.id);
       load();
@@ -1221,6 +1224,7 @@ function UsersTab({ server }) {
   const [searching, setSearching] = useState(false);
   const [selectedPerms, setSelectedPerms] = useState([]);
   const [error, setError] = useState('');
+  const confirm = useConfirm();
 
   async function load() {
     try {
@@ -1273,7 +1277,7 @@ function UsersTab({ server }) {
   }
 
   async function remove(su) {
-    if (!confirm(`Remove ${su.username} from this server?`)) return;
+    if (!await confirm(`Remove ${su.username} from this server?`)) return;
     try {
       await api.deleteSubuser(su.id);
       load();
@@ -1365,6 +1369,7 @@ function BackupsTab({ server }) {
   const [backups, setBackups] = useState([]);
   const [error, setError] = useState('');
   const toast = useToast();
+  const confirm = useConfirm();
 
   async function load() {
     try {
@@ -1398,7 +1403,7 @@ function BackupsTab({ server }) {
   }
 
   async function restore(b) {
-    if (!confirm(`Restore backup ${b.name}? This overwrites all current files.`)) return;
+    if (!await confirm(`Restore backup ${b.name}? This overwrites all current files.`)) return;
     try {
       await api.restoreBackup(b.id);
       toast && toast.push('Restore started');
@@ -1409,7 +1414,7 @@ function BackupsTab({ server }) {
   }
 
   async function remove(b) {
-    if (!confirm(`Delete backup ${b.name}?`)) return;
+    if (!await confirm(`Delete backup ${b.name}?`)) return;
     try {
       await api.deleteBackup(b.id);
       load();
@@ -1604,6 +1609,7 @@ function PluginsTab({ server }) {
   const [installProgress, setInstallProgress] = useState(null); // { project_id, pct }
   const [error, setError] = useState('');
   const toast = useToast();
+  const confirm = useConfirm();
 
   // Match an installed jar filename against a plugin title (e.g. "EssentialsX"
   // matches "EssentialsX-2.22.0.jar").
@@ -1664,7 +1670,7 @@ function PluginsTab({ server }) {
   }
 
   async function remove(f) {
-    if (!confirm(`Delete plugin ${f.name}?`)) return;
+    if (!await confirm(`Delete plugin ${f.name}?`)) return;
     try {
       await api.pluginDelete(server.id, f.name);
       toast.push(`Deleted ${f.name}`);

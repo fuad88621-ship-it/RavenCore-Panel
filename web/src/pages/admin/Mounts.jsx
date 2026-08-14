@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Card, EmptyState, GlowButton, Icons, SectionHeader } from '../../components/ui.jsx';
+import { Card, EmptyState, GlowButton, Icons, SectionHeader, useConfirm } from '../../components/ui.jsx';
 
 export default function Mounts() {
   const [mounts, setMounts] = useState([]);
+  const confirm = useConfirm();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', source: '', target: '', read_only: false });
   const [error, setError] = useState('');
@@ -32,7 +33,7 @@ export default function Mounts() {
   }
 
   async function remove(m) {
-    if (!confirm(`Delete mount ${m.name}?`)) return;
+    if (!await confirm(`Delete mount ${m.name}?`)) return;
     await api.admin.deleteMount(m.id);
     load();
   }
