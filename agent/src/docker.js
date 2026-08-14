@@ -1,6 +1,8 @@
 import Docker from 'dockerode';
 import fs from 'fs/promises';
 import path from 'path';
+import os from 'node:os';
+import { createReadStream } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { config } from './config.js';
@@ -241,7 +243,7 @@ export async function power(uuid, action) {
   return { status: info?.State.Running ? 'running' : 'offline' };
 }
 
-export async function removeBot(uuid) {
+export async function removeBot(uuid, keepFiles = false) {
   markExpectedStop(uuid);
   const container = await findContainer(uuid);
   if (container) {
@@ -253,7 +255,11 @@ export async function removeBot(uuid) {
     const net = docker.getNetwork(networkName((await getContainerInfo(uuid)).identifier));
     await net.remove();
   } catch {}
-  await fs.rm(botDir(uuid), { recursive: true, force: true });
+  // keep_files: used when the data dir is shared with another node/agent
+  // (same-host transfers) — never delete it in that case.
+  if (!keepFiles) {
+    await fs.rm(botDir(uuid), { recursive: true, force: true });
+  }
   return { ok: true };
 }
 
@@ -463,6 +469,45 @@ export async function extractArchive(uuid, relPath) {
   } else {
     throw new Error('Unsupported archive format');
   }
+  return { ok: true };
+}
+
+// Transfer this server's files to another agent (panel-orchestrated).
+// Creates a tar.gz of the whole data dir (excluding spec.json, which the
+// destination agent writes from its own createBot call) and streams it to the
+// destination agent's import endpoint. `url` = dest import URL, `token` = the
+// destination agent's daemon token.
+export async function transferOut(uuid, url, token) {
+  const root = safeResolve(uuid, '/');
+  // Archive to the OS temp dir, NOT inside the data dir — tarring a growing
+  // file inside the tree being archived errors with "file changed as we read it".
+  const tarPath = path.join(os.tmpdir(), `raven-transfer-${uuid}-${Date.now()}.tar.gz`);
+  try {
+    await exec('tar', ['-czf', tarPath, '--exclude=spec.json', '.'], { cwd: root });
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/octet-stream',
+      },
+      body: createReadStream(tarPath),
+      duplex: 'half',
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`Destination agent rejected transfer (${res.status}): ${txt.slice(0, 200)}`);
+    }
+  } finally {
+    await fs.rm(tarPath, { force: true });
+  }
+  return { ok: true };
+}
+
+// Extract a received tar.gz stream into the server's data directory.
+export async function importArchive(uuid, tempPath) {
+  const root = safeResolve(uuid, '/');
+  await fs.mkdir(root, { recursive: true });
+  await exec('tar', ['-xzf', tempPath], { cwd: root });
   return { ok: true };
 }
 
