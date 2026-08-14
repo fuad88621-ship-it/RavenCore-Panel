@@ -250,7 +250,7 @@ async function seedDefaults() {
      ON CONFLICT (short) DO NOTHING`
   );
 
-  // Default nest + eggs (from panel/eggs/*.json)
+  // Default nest + eggs (auto-discovered from panel/eggs/*.json)
   const nest = await q1(`SELECT id FROM nests WHERE name = 'Generic'`);
   let nestId = nest?.id;
   if (!nestId) {
@@ -258,9 +258,16 @@ async function seedDefaults() {
     nestId = n.id;
   }
 
-  const eggFiles = ['nodejs', 'python', 'golang', 'java', 'minecraft', 'vanilla'];
-  for (const name of eggFiles) {
-    await importEgg(name, nestId);
+  // Auto-import every egg file in panel/eggs/ — no hardcoded list.
+  // Drop a new .json in that folder and restart the panel to add an egg.
+  const { readdirSync } = await import('fs');
+  const pathMod = await import('path');
+  const { fileURLToPath } = await import('url');
+  const __dirname = pathMod.dirname(fileURLToPath(import.meta.url));
+  const eggsDir = pathMod.join(__dirname, '..', 'eggs');
+  const eggFiles = readdirSync(eggsDir).filter((f) => f.endsWith('.json'));
+  for (const file of eggFiles) {
+    await importEgg(pathMod.basename(file, '.json'), nestId);
   }
 
   // Seed the local node from config.yml
