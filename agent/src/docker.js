@@ -623,10 +623,6 @@ export async function getSftpInfo(identifier) {
 
 const hostCpuSample = { idle: 0, total: 0 };
 
-// When this agent process started — used for the node's uptime (the host's
-// /proc/uptime is the VPS uptime, not the agent's).
-const agentStartedAt = Date.now();
-
 // Live host-level metrics: CPU, RAM, disk, load, uptime, container counts.
 // Used by the panel's node health dashboard.
 export async function getHostStats() {
@@ -680,8 +676,12 @@ export async function getHostStats() {
     load = l.trim().split(/\s+/).slice(0, 3).map(Number);
   } catch {}
 
-  // Uptime of the agent process itself (not the host)
-  const uptimeSeconds = Math.floor((Date.now() - agentStartedAt) / 1000);
+  // Uptime of the VPS host (from /proc/uptime)
+  let uptimeSeconds = 0;
+  try {
+    const u = await fs.readFile('/proc/uptime', 'utf8');
+    uptimeSeconds = Math.floor(parseFloat(u.trim().split(/\s+/)[0]));
+  } catch {}
 
   // Container counts
   let containers = { total: 0, running: 0 };

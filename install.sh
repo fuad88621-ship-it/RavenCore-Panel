@@ -45,6 +45,70 @@ if [ "$1" = "--update" ]; then
   exit 0
 fi
 
+# ── Delete mode: fully remove the RavenCore agent from this VPS ──
+# Usage: bash <(curl -fsSL .../install.sh) --delete
+#
+# SAFETY: this ONLY removes RavenCore's own containers (labeled raven.uuid),
+# networks (raven-*), the agent data dir and the agent source. It will NOT
+# touch Pterodactyl's wings containers, its networks, or any other container
+# on the machine.
+if [ "$1" = "--delete" ]; then
+  echo ""
+  echo -e "${C_RED}${C_BOLD}  ╔══════════════════════════════════════════════════════╗"
+  echo -e "  ║  WARNING: this removes the RavenCore agent + ALL its servers  ║"
+  echo -e "  ║  from this VPS. Pterodactyl and other containers are SAFE.   ║"
+  echo -e "  ╚══════════════════════════════════════════════════════╝${C_RESET}"
+  echo ""
+  read -rp "  Type DELETE to confirm: " CONFIRM
+  [ "$CONFIRM" = "DELETE" ] || fail "Aborted."
+
+  AGENT_DIR="/opt/raven-agent"
+
+  # 1. Stop + remove the agent container itself
+  if [ -f "$AGENT_DIR/docker-compose.yml" ]; then
+    info "Stopping the agent container…"
+    (cd "$AGENT_DIR" && docker compose down 2>/dev/null || true)
+  fi
+
+  # 2. Remove ONLY RavenCore server containers (labeled raven.uuid).
+  #    Pterodactyl's containers have different labels and are never matched.
+  info "Removing RavenCore server containers…"
+  RAVEN_CONTAINERS="$(docker ps -aq --filter 'label=raven.uuid' 2>/dev/null || true)"
+  if [ -n "$RAVEN_CONTAINERS" ]; then
+    echo "$RAVEN_CONTAINERS" | xargs -r docker rm -f >/dev/null 2>&1 || true
+    ok "Removed $(echo "$RAVEN_CONTAINERS" | wc -l) RavenCore container(s)"
+  else
+    ok "No RavenCore containers found"
+  fi
+
+  # 3. Remove RavenCore networks (raven-*). Pterodactyl uses its own names.
+  info "Removing RavenCore networks…"
+  RAVEN_NETS="$(docker network ls -q --filter 'name=raven-' 2>/dev/null || true)"
+  if [ -n "$RAVEN_NETS" ]; then
+    echo "$RAVEN_NETS" | xargs -r docker network rm >/dev/null 2>&1 || true
+    ok "Removed RavenCore network(s)"
+  else
+    ok "No RavenCore networks found"
+  fi
+
+  # 4. Remove the agent data dir (server files) + agent source
+  DATA_DIR="$(grep -oP 'BOT_DATA_DIR: \K[^ ]+' "$AGENT_DIR/docker-compose.yml" 2>/dev/null || echo '/var/lib/raven/bots')"
+  info "Removing server data at ${DATA_DIR}…"
+  rm -rf "$DATA_DIR" 2>/dev/null || true
+  info "Removing agent source at ${AGENT_DIR}…"
+  rm -rf "$AGENT_DIR" 2>/dev/null || true
+
+  echo ""
+  echo -e "${C_GREEN}${C_BOLD}  ──────────────────────────────────────────────"
+  echo -e "   🧹  RavenCore agent fully removed from this VPS"
+  echo -e "  ──────────────────────────────────────────────${C_RESET}"
+  echo ""
+  echo -e "  Pterodactyl and all other containers were left untouched."
+  echo -e "  Last step: delete the node from the panel → Admin → Nodes → Delete."
+  echo ""
+  exit 0
+fi
+
 # ── Colors ─────────────────────────────────────────────────────────
 C_RESET='\033[0m'; C_GREEN='\033[32m'; C_CYAN='\033[36m'; C_YELLOW='\033[33m'; C_RED='\033[31m'; C_BOLD='\033[1m'
 
