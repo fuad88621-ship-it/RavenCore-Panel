@@ -64,7 +64,7 @@ export async function findContainer(uuid) {
   return null;
 }
 
-export async function createBot({ uuid, identifier, image, startup_command, install_command, memory_mb, disk_mb, cpu, env, mounts = [], mount_target = '/home/container', sftp_password = null, io = 500, cpu_pinning = '', oom_killer = true }) {
+export async function createBot({ uuid, identifier, image, startup_command, install_command, memory_mb, disk_mb, cpu, env, mounts = [], mount_target = '/home/container', sftp_password = null, io = 500, cpu_pinning = '', oom_killer = true, allocation_port = null }) {
   const dir = await ensureBotDir(uuid);
   const name = containerName(identifier);
   const net = await ensureNetwork(identifier);
@@ -104,7 +104,8 @@ export async function createBot({ uuid, identifier, image, startup_command, inst
     });
     await installContainer.start();
     await installContainer.wait();
-    installStream.end();
+    if (typeof installStream.end === 'function') installStream.end();
+    else installStream.destroy?.();
     await logHandle.close();
     await installContainer.remove({ force: true });
   }
@@ -112,6 +113,7 @@ export async function createBot({ uuid, identifier, image, startup_command, inst
   // Persist the bot spec so reinstall / start can rebuild it
   await fs.writeFile(path.join(dir, 'spec.json'), JSON.stringify({
     uuid, identifier, image, startup_command, install_command, memory_mb, disk_mb, cpu, env, mounts, mount_target, io,
+    allocation_port: allocation_port || null,
     sftp_password: sftp_password || null,
   }), 'utf8');
 
@@ -161,6 +163,14 @@ export async function createBot({ uuid, identifier, image, startup_command, inst
       ],
       // Rotate container logs so they can't fill the disk
       LogConfig: { Type: 'json-file', Config: { 'max-size': '5m', 'max-file': '1' } },
+      // Publish the server's allocation port so players can connect
+      ...(allocation_port ? {
+        ExposedPorts: { [`${allocation_port}/tcp`]: {}, [`${allocation_port}/udp`]: {} },
+        PortBindings: {
+          [`${allocation_port}/tcp`]: [{ HostIp: '0.0.0.0', HostPort: String(allocation_port) }],
+          [`${allocation_port}/udp`]: [{ HostIp: '0.0.0.0', HostPort: String(allocation_port) }],
+        },
+      } : {}),
     },
     Cmd: ['bash', '-c', startup_command],
     Labels: { 'raven.uuid': uuid, 'raven.identifier': identifier },
@@ -327,6 +337,7 @@ export async function updateSpec(uuid, patch) {
 }
 
 // Rebuild the container from spec (applies env / startup command changes).
+// Does NOT re-run the install step — that would wipe the server's setup.
 export async function recreateContainer(uuid) {
   const spec = await getContainerInfo(uuid);
   const container = await findContainer(uuid);
@@ -334,7 +345,7 @@ export async function recreateContainer(uuid) {
     try { await container.kill(); } catch {}
     await container.remove({ force: true });
   }
-  await createBot(spec);
+  await createBot({ ...spec, install_command: null });
   return { ok: true };
 }
 

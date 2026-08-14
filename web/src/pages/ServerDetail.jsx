@@ -1446,7 +1446,7 @@ function NetworkTab({ server }) {
               {allocations.length === 0 && <tr><td colSpan={3} className="px-4 py-6 text-center text-zinc-500">No allocations.</td></tr>}
               {allocations.map((a) => (
                 <tr key={a.id} className="border-b border-white/[0.06] last:border-0">
-                  <td className="px-4 py-3 font-mono text-zinc-300">{a.ip}</td>
+                  <td className="px-4 py-3 font-mono text-zinc-300">{a.ip && a.ip !== '0.0.0.0' ? a.ip : (server.node_fqdn || a.ip)}</td>
                   <td className="px-4 py-3 font-mono text-white">{a.port}</td>
                   <td className="px-4 py-3 text-zinc-400">{a.node_name}</td>
                 </tr>
@@ -1541,7 +1541,7 @@ export default function ServerDetail() {
   ], []);
 
   const address = server?.allocation_port
-    ? `${server?.allocation_ip || '0.0.0.0'}:${server.allocation_port}`
+    ? `${(server?.allocation_ip && server.allocation_ip !== '0.0.0.0') ? server.allocation_ip : (server?.node_fqdn || '0.0.0.0')}:${server.allocation_port}`
     : server?.node_fqdn;
 
   const memLimitMb = resources?.memory_limit_mb || server?.memory_mb || 1;

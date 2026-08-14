@@ -143,7 +143,7 @@ app.get('/servers/:uuid/files/download', async (req, res) => {
 // so changes actually apply.
 app.patch('/servers/:uuid/spec', async (req, res) => {
   try {
-    const { env, startup_command, image, memory_mb, cpu, disk_mb, mounts } = req.body || {};
+    const { env, startup_command, image, memory_mb, cpu, disk_mb, mounts, allocation_port } = req.body || {};
     const patch = {};
     if (env !== undefined) patch.env = env;
     if (startup_command !== undefined) patch.startup_command = startup_command;
@@ -152,6 +152,7 @@ app.patch('/servers/:uuid/spec', async (req, res) => {
     if (cpu !== undefined) patch.cpu = cpu;
     if (disk_mb !== undefined) patch.disk_mb = disk_mb;
     if (mounts !== undefined) patch.mounts = mounts;
+    if (allocation_port !== undefined) patch.allocation_port = allocation_port;
     await docker.updateSpec(req.params.uuid, patch);
     await docker.recreateContainer(req.params.uuid);
     res.json({ ok: true });

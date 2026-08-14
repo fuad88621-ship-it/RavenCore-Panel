@@ -213,6 +213,7 @@ export async function adminServerRoutes(fastify) {
       mounts: [],
       mount_target: egg.mount_target || '/home/container',
       sftp_password: sftpPassword,
+      allocation_port: defaultPort,
     }).then(async (res) => {
       await q(`UPDATE servers SET container_id = $1, status = 'offline' WHERE id = $2`, [res.container_id, server.id]);
       // Auto-start when installed if requested
