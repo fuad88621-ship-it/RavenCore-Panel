@@ -196,6 +196,8 @@ function FilesTab({ server }) {
   const [selected, setSelected] = useState(new Set());
   const [newFolder, setNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [newFile, setNewFile] = useState(false);
+  const [newFileName, setNewFileName] = useState('');
   const [contextMenu, setContextMenu] = useState(null);
   const [error, setError] = useState('');
   const menuRef = useRef(null);
@@ -301,6 +303,19 @@ function FilesTab({ server }) {
     }
   }
 
+  async function createFile(e) {
+    e.preventDefault();
+    if (!newFileName.trim()) return;
+    try {
+      await api.writeFile(server.id, join(path, newFileName.trim()), '');
+      setNewFile(false);
+      setNewFileName('');
+      load(path);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   async function archiveSelected() {
     if (selected.size === 0) return;
     const name = prompt('Archive name (e.g. backup.tar.gz):', 'archive.tar.gz');
@@ -388,13 +403,29 @@ function FilesTab({ server }) {
               })}
             </nav>
             <div className="flex flex-wrap items-center gap-2">
-              <button className="btn-ghost !px-3 !py-1.5 text-xs" onClick={() => setNewFolder(true)}><Icons.Plus className="h-3.5 w-3.5" /> New folder</button>
+              <button className="btn-ghost !px-3 !py-1.5 text-xs" onClick={() => setNewFile(true)}><Icons.Plus className="h-3.5 w-3.5" /> New file</button>
+              <button className="btn-ghost !px-3 !py-1.5 text-xs" onClick={() => setNewFolder(true)}><Icons.Folder className="h-3.5 w-3.5" /> New folder</button>
               <label className="btn-primary !px-3 !py-1.5 cursor-pointer text-xs">
                 <Icons.Upload className="h-3.5 w-3.5" /> Upload
                 <input type="file" className="hidden" onChange={upload} />
               </label>
             </div>
           </div>
+
+          {newFile && (
+            <form onSubmit={createFile} className="mb-4 flex max-w-sm gap-2">
+              <input
+                autoFocus
+                className="input text-sm"
+                placeholder="File name"
+                value={newFileName}
+                onChange={(e) => setNewFileName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') setNewFile(false); }}
+              />
+              <button className="btn-primary !px-3 text-xs" type="submit">Create</button>
+              <button type="button" className="btn-ghost !px-3 text-xs" onClick={() => setNewFile(false)}>Cancel</button>
+            </form>
+          )}
 
           {newFolder && (
             <form onSubmit={createFolder} className="mb-4 flex max-w-sm gap-2">
@@ -437,53 +468,80 @@ function FilesTab({ server }) {
                 <p className="text-sm text-zinc-500">This directory is empty.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-px bg-white/[0.04] sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              <div className="divide-y divide-white/[0.06]">
                 {files.map((f, i) => (
                   <motion.div
                     key={f.name}
-                    initial={{ opacity: 0, scale: 0.96 }}
-                    animate={{ opacity: 1, scale: 1 }}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.2, delay: i * 0.03 }}
                     className={cn(
-                      'group relative bg-[#0c0c10] p-4 transition-colors hover:bg-white/[0.03]',
-                      selected.has(f.name) && 'bg-violet-500/10 ring-1 ring-violet-500/30'
+                      'group flex items-center gap-4 px-4 py-3 transition-colors hover:bg-white/[0.03]',
+                      selected.has(f.name) && 'bg-violet-500/10'
                     )}
                     onContextMenu={(e) => openContextMenu(f, e)}
                   >
-                    <div className="absolute left-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(f.name)}
-                        onChange={(e) => toggleSelect(f, e)}
-                        className="h-3.5 w-3.5 rounded border-white/20 bg-white/10 text-violet-500 focus:ring-violet-500/40"
-                      />
-                    </div>
-                    <button onClick={() => openFile(f)} className="flex w-full flex-col items-center gap-3 text-center">
-                      <FileIcon type={f.type} name={f.name} />
-                      {renaming === f.name ? (
-                        <input
-                          autoFocus
-                          className="input w-full text-center text-xs"
-                          value={renameValue}
-                          onChange={(e) => setRenameValue(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') rename(f); if (e.key === 'Escape') setRenaming(null); }}
-                          onBlur={() => rename(f)}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      ) : (
-                        <>
-                          <span className="line-clamp-2 w-full text-xs font-medium text-zinc-200">{f.name}</span>
-                          <span className="text-[10px] text-zinc-500">{f.type === 'file' ? formatBytes(f.size) : 'Folder'}</span>
-                        </>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(f.name)}
+                      onChange={(e) => toggleSelect(f, e)}
+                      className="h-4 w-4 rounded border-white/20 bg-white/10 text-violet-500 focus:ring-violet-500/40"
+                    />
+                    <button onClick={() => openFile(f)} className="flex flex-1 items-center gap-4 text-left">
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#0f0f14] ring-1 ring-white/[0.06]">
+                        <FileIcon type={f.type} name={f.name} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        {renaming === f.name ? (
+                          <input
+                            autoFocus
+                            className="input max-w-xs text-sm"
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') rename(f); if (e.key === 'Escape') setRenaming(null); }}
+                            onBlur={() => rename(f)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <>
+                            <p className="truncate text-sm font-medium text-zinc-200">{f.name}</p>
+                            <p className="text-xs text-zinc-500">{f.type === 'file' ? formatBytes(f.size) : 'Folder'}</p>
+                          </>
+                        )}
+                      </div>
+                    </button>
+                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <button
+                        className="rounded-md border border-white/[0.08] bg-[#0c0c10] p-2 text-zinc-400 hover:text-white"
+                        onClick={(e) => { e.stopPropagation(); setRenaming(f.name); setRenameValue(f.name); }}
+                        title="Rename"
+                      >
+                        <Icons.Gear className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        className="rounded-md border border-white/[0.08] bg-[#0c0c10] p-2 text-zinc-400 hover:text-white"
+                        onClick={(e) => { e.stopPropagation(); download(f); }}
+                        title="Download"
+                      >
+                        <Icons.Download className="h-3.5 w-3.5" />
+                      </button>
+                      {f.type === 'file' && isArchive(f.name) && (
+                        <button
+                          className="rounded-md border border-white/[0.08] bg-[#0c0c10] p-2 text-zinc-400 hover:text-white"
+                          onClick={(e) => { e.stopPropagation(); extract(f); }}
+                          title="Extract"
+                        >
+                          <Icons.Folder className="h-3.5 w-3.5" />
+                        </button>
                       )}
-                    </button>
-                    <button
-                      className="absolute right-2 top-2 rounded-md border border-white/[0.08] bg-[#0c0c10] p-1 text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100 hover:text-white"
-                      onClick={(e) => openContextMenu(f, e)}
-                      title="Actions"
-                    >
-                      <Icons.Gear className="h-3 w-3" />
-                    </button>
+                      <button
+                        className="rounded-md border border-white/[0.08] bg-[#0c0c10] p-2 text-zinc-400 hover:text-red-400"
+                        onClick={(e) => { e.stopPropagation(); remove(f); }}
+                        title="Delete"
+                      >
+                        <Icons.Trash className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </motion.div>
                 ))}
               </div>
