@@ -1601,8 +1601,17 @@ function PluginsTab({ server }) {
   const [installed, setInstalled] = useState([]);
   const [searching, setSearching] = useState(false);
   const [installing, setInstalling] = useState(null);
+  const [installProgress, setInstallProgress] = useState(null); // { project_id, pct }
   const [error, setError] = useState('');
   const toast = useToast();
+
+  // Match an installed jar filename against a plugin title (e.g. "EssentialsX"
+  // matches "EssentialsX-2.22.0.jar").
+  function isInstalled(p) {
+    const key = (p.title || '').toLowerCase().split(/[^a-z0-9]/)[0];
+    if (!key) return false;
+    return installed.some((f) => f.name.toLowerCase().startsWith(key));
+  }
 
   async function loadInstalled() {
     try {
@@ -1632,15 +1641,25 @@ function PluginsTab({ server }) {
 
   async function install(p) {
     setInstalling(p.project_id);
+    setInstallProgress({ project_id: p.project_id, pct: 0 });
     setError('');
+    // Simulated progress while the agent downloads the jar (0 -> 90%)
+    const timer = setInterval(() => {
+      setInstallProgress((prev) => {
+        if (!prev || prev.project_id !== p.project_id) return prev;
+        return { ...prev, pct: Math.min(90, prev.pct + Math.random() * 14) };
+      });
+    }, 400);
     try {
       const d = await api.pluginInstall(server.id, p.project_id);
+      setInstallProgress({ project_id: p.project_id, pct: 100 });
       toast.push(`Installed ${d.filename}`);
       await loadInstalled();
     } catch (e) {
       setError(e.message);
     } finally {
-      setInstalling(null);
+      clearInterval(timer);
+      setTimeout(() => { setInstalling(null); setInstallProgress(null); }, 600);
     }
   }
 
@@ -1716,13 +1735,23 @@ function PluginsTab({ server }) {
                     </span>
                   )}
                 </div>
-                <button
-                  className="btn-primary !px-3 !py-1.5 text-xs shrink-0"
-                  onClick={() => install(p)}
-                  disabled={installing === p.project_id}
-                >
-                  {installing === p.project_id ? 'Installing…' : 'Install'}
-                </button>
+                {isInstalled(p) ? (
+                  <span className="chip shrink-0 border border-emerald-500/20 bg-emerald-500/10 text-emerald-300">Installed ✓</span>
+                ) : installing === p.project_id ? (
+                  <div className="shrink-0 text-right">
+                    <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-violet-500 transition-all duration-300" style={{ width: `${Math.round(installProgress?.pct || 0)}%` }} />
+                    </div>
+                    <p className="mt-1 text-[11px] text-zinc-400">Installing {Math.round(installProgress?.pct || 0)}%</p>
+                  </div>
+                ) : (
+                  <button
+                    className="btn-primary !px-3 !py-1.5 text-xs shrink-0"
+                    onClick={() => install(p)}
+                  >
+                    Install
+                  </button>
+                )}
               </div>
             ))}
           </div>
