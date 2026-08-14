@@ -49,6 +49,11 @@ export function publicUser(u) {
 }
 
 export async function authRoutes(fastify) {
+  fastify.get('/api/settings', async () => {
+    const rows = await q(`SELECT key, value FROM settings ORDER BY key`);
+    return { settings: Object.fromEntries(rows.map((r) => [r.key, r.value])) };
+  });
+
   fastify.post('/api/auth/register', async (req, reply) => {
     const { username, email, password } = req.body || {};
     try {

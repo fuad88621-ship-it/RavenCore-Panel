@@ -13,13 +13,22 @@ const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 export { useToasts as useToast };
 
+const SettingsContext = createContext({});
+export const useSettings = () => useContext(SettingsContext);
+
 function Logo({ size = 36 }) {
+  const settings = useSettings();
+  const logoUrl = settings['panel.logo_url'];
   return (
     <span
-      className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 text-lg font-black text-violet-200 ring-1 ring-white/10"
+      className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 ring-1 ring-white/10"
       style={{ width: size, height: size }}
     >
-      🐦‍⬛
+      {logoUrl ? (
+        <img src={logoUrl} alt="" className="h-full w-full object-contain p-1" />
+      ) : (
+        <Icons.Server className="h-5 w-5 text-violet-300" />
+      )}
     </span>
   );
 }
@@ -78,14 +87,16 @@ function NavItem({ item, active, delay = 0 }) {
 function Sidebar({ user, onLogout, nav }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const settings = useSettings();
+  const panelName = settings['app.name'] || 'Panel';
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-[280px] flex-col border-r border-white/[0.05] bg-[#08080a]/80 p-4 backdrop-blur-2xl lg:flex">
       <Link to="/" className="flex items-center gap-3 px-2 py-2">
         <Logo size={38} />
         <div className="flex flex-col">
-          <span className="text-base font-bold tracking-tight text-white">Raven Panel</span>
-          <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">Bot Hosting</span>
+          <span className="text-base font-bold tracking-tight text-white">{panelName}</span>
+          <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">Cloud Platform</span>
         </div>
       </Link>
 
@@ -143,6 +154,8 @@ function Sidebar({ user, onLogout, nav }) {
 function MobileNav({ user, onLogout }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const settings = useSettings();
+  const panelName = settings['app.name'] || 'Panel';
   const [open, setOpen] = useState(false);
 
   const nav = [
@@ -155,7 +168,7 @@ function MobileNav({ user, onLogout }) {
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-white/[0.05] bg-[#08080a]/70 px-4 py-3 backdrop-blur-2xl lg:hidden">
         <Link to="/" className="flex items-center gap-2.5">
           <Logo size={34} />
-          <span className="text-sm font-bold text-white">Raven Panel</span>
+          <span className="text-sm font-bold text-white">{panelName}</span>
         </Link>
         <button
           onClick={() => setOpen(true)}
@@ -186,7 +199,7 @@ function MobileNav({ user, onLogout }) {
               <div className="flex items-center justify-between">
                 <Link to="/" className="flex items-center gap-2.5" onClick={() => setOpen(false)}>
                   <Logo size={34} />
-                  <span className="text-sm font-bold text-white">Raven Panel</span>
+                  <span className="text-sm font-bold text-white">{panelName}</span>
                 </Link>
                 <button
                   onClick={() => setOpen(false)}
@@ -323,9 +336,9 @@ function Protected({ children }) {
         <motion.div
           animate={{ scale: [1, 1.08, 1] }}
           transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-          className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 text-2xl font-bold text-violet-300 ring-1 ring-white/10"
+          className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 ring-1 ring-white/10"
         >
-          RH
+          <Logo size={40} />
         </motion.div>
       </div>
     );
@@ -343,9 +356,9 @@ function AdminProtected({ children }) {
         <motion.div
           animate={{ scale: [1, 1.08, 1] }}
           transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-          className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 text-2xl font-bold text-violet-300 ring-1 ring-white/10"
+          className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 ring-1 ring-white/10"
         >
-          RH
+          <Logo size={40} />
         </motion.div>
       </div>
     );
@@ -364,9 +377,9 @@ function AuthLayout({ children }) {
         <motion.div
           animate={{ scale: [1, 1.08, 1] }}
           transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-          className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 text-2xl font-bold text-violet-300 ring-1 ring-white/10"
+          className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 ring-1 ring-white/10"
         >
-          RH
+          <Logo size={40} />
         </motion.div>
       </div>
     );
@@ -385,11 +398,34 @@ function AuthLayout({ children }) {
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState({});
   const toastApi = useToasts();
 
   useEffect(() => {
     api.me().then((d) => setUser(d.user)).catch(() => setUser(null)).finally(() => setLoading(false));
+    api.settings().then((d) => setSettings(d.settings)).catch(() => {});
   }, []);
+
+  // Apply branding: CSS variables, favicon and title.
+  useEffect(() => {
+    if (!settings) return;
+    const primary = settings['panel.primary_color'] || '#8b5cf6';
+    const accent = settings['panel.accent_color'] || '#d946ef';
+    document.documentElement.style.setProperty('--raven-primary', primary);
+    document.documentElement.style.setProperty('--raven-accent', accent);
+    const favicon = settings['panel.favicon_url'];
+    if (favicon) {
+      let link = document.querySelector("link[rel~='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.href = favicon;
+    }
+    const name = settings['app.name'];
+    if (name) document.title = name;
+  }, [settings]);
 
   // Strip leading zeros from number inputs so users can type e.g. 19 instead of getting 019.
   useEffect(() => {
@@ -409,19 +445,24 @@ export default function App() {
   }, []);
 
   const logout = () => setUser(null);
+  const location = useLocation();
 
   return (
     <ToastContext.Provider value={toastApi}>
       <AuthContext.Provider value={{ user, setUser, logout, loading }}>
-        <Routes>
-          <Route path="/login" element={<AuthLayout><Login /></AuthLayout>} />
-          <Route path="/register" element={<AuthLayout><Register /></AuthLayout>} />
-          <Route path="/" element={<Protected><Dashboard /></Protected>} />
-          <Route path="/servers/:id" element={<Protected><ServerDetail /></Protected>} />
-          <Route path="/admin" element={<AdminProtected><Admin /></AdminProtected>} />
-          <Route path="/admin/*" element={<AdminProtected><Admin /></AdminProtected>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <SettingsContext.Provider value={settings}>
+          <AnimatePresence mode="wait">
+            <Routes location={location} key={location.pathname}>
+              <Route path="/login" element={<AuthLayout><Login /></AuthLayout>} />
+              <Route path="/register" element={<AuthLayout><Register /></AuthLayout>} />
+              <Route path="/" element={<Protected><Dashboard /></Protected>} />
+              <Route path="/servers/:id" element={<Protected><ServerDetail /></Protected>} />
+              <Route path="/admin" element={<AdminProtected><Admin /></AdminProtected>} />
+              <Route path="/admin/*" element={<AdminProtected><Admin /></AdminProtected>} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </AnimatePresence>
+        </SettingsContext.Provider>
       </AuthContext.Provider>
     </ToastContext.Provider>
   );

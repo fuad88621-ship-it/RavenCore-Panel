@@ -10,6 +10,10 @@ const FIELDS = [
   { key: 'app.locale', label: 'Locale', type: 'text' },
   { key: 'panel.registration', label: 'Allow registration', type: 'select', options: ['true', 'false'] },
   { key: 'panel.announcement', label: 'Announcement banner', type: 'textarea' },
+  { key: 'panel.logo_url', label: 'Logo URL (optional)', type: 'text', placeholder: 'https://example.com/logo.png' },
+  { key: 'panel.favicon_url', label: 'Favicon URL (optional)', type: 'text', placeholder: 'https://example.com/favicon.ico' },
+  { key: 'panel.primary_color', label: 'Primary color (hex)', type: 'text', placeholder: '#8b5cf6' },
+  { key: 'panel.accent_color', label: 'Accent color (hex)', type: 'text', placeholder: '#d946ef' },
 ];
 
 export default function Settings() {
@@ -47,7 +51,7 @@ export default function Settings() {
             ) : f.type === 'textarea' ? (
               <textarea className="input" rows={3} value={settings[f.key] || ''} onChange={(e) => setSettings((s) => ({ ...s, [f.key]: e.target.value }))} />
             ) : (
-              <input className="input" value={settings[f.key] || ''} onChange={(e) => setSettings((s) => ({ ...s, [f.key]: e.target.value }))} />
+              <input className="input" value={settings[f.key] || ''} placeholder={f.placeholder || ''} onChange={(e) => setSettings((s) => ({ ...s, [f.key]: e.target.value }))} />
             )}
           </div>
         ))}

@@ -485,7 +485,7 @@ export function useToasts() {
 }
 
 // ── Mobile navigation menu ───────────────────────────────────
-export function MobileMenu({ nav, user, onLogout, open, onClose }) {
+export function MobileMenu({ nav, user, onLogout, open, onClose, title = 'Panel' }) {
   const navigate = useNavigate();
   if (!open) return null;
   return (
@@ -500,11 +500,15 @@ export function MobileMenu({ nav, user, onLogout, open, onClose }) {
       >
         <div className="flex items-center justify-between px-4 py-4">
           <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 text-lg font-black text-violet-200 ring-1 ring-white/10">
-              🐦‍⬛
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 ring-1 ring-white/10">
+              <svg viewBox="0 0 24 24" className="h-5 w-5 text-violet-300" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="7" rx="1.5" />
+                <rect x="3" y="13" width="18" height="7" rx="1.5" />
+                <path d="M7 7.5h.01M7 16.5h.01" strokeWidth={2.4} />
+              </svg>
             </span>
             <div>
-              <p className="font-bold text-white leading-tight">Raven Panel</p>
+              <p className="font-bold text-white leading-tight">{title}</p>
               <p className="text-xs text-zinc-600">Cloud Platform</p>
             </div>
           </div>
@@ -810,6 +814,12 @@ export const Icons = {
     <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
       <path d="M5.5 8h13l-1 12.5a1.5 1.5 0 0 1-1.5 1.4H8a1.5 1.5 0 0 1-1.5-1.4z" />
       <path d="M9 10V6.5a3 3 0 0 1 6 0V10" />
+    </svg>
+  ),
+  File: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
     </svg>
   ),
   CloudDown: (p) => (

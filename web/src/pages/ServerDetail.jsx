@@ -158,11 +158,29 @@ function ConsoleTab({ server }) {
   );
 }
 
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / k ** i).toFixed(1))} ${sizes[i]}`;
+}
+
+function FileIcon({ type, name }) {
+  if (type === 'dir') return <Icons.Folder className="h-8 w-8 text-violet-300" />;
+  if (name.endsWith('.js') || name.endsWith('.jsx') || name.endsWith('.ts')) return <Icons.Terminal className="h-8 w-8 text-amber-300" />;
+  if (name.endsWith('.json') || name.endsWith('.yml') || name.endsWith('.yaml')) return <Icons.Database className="h-8 w-8 text-sky-300" />;
+  if (name.endsWith('.md') || name.endsWith('.txt')) return <Icons.Env className="h-8 w-8 text-emerald-300" />;
+  return <Icons.File className="h-8 w-8 text-zinc-400" />;
+}
+
 function FilesTab({ server }) {
   const [path, setPath] = useState('/');
   const [files, setFiles] = useState([]);
   const [editing, setEditing] = useState(null);
   const [content, setContent] = useState('');
+  const [renaming, setRenaming] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
   const [error, setError] = useState('');
 
   async function load(p) {
@@ -212,6 +230,20 @@ function FilesTab({ server }) {
     }
   }
 
+  async function rename(f) {
+    if (!renameValue || renameValue === f.name) {
+      setRenaming(null);
+      return;
+    }
+    try {
+      await api.renameFile(server.id, join(path, f.name), join(path, renameValue));
+      setRenaming(null);
+      load(path);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   async function upload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -224,56 +256,104 @@ function FilesTab({ server }) {
     }
   }
 
+  const crumbs = path === '/' ? [''] : path.split('/').filter(Boolean);
+
   return (
     <div>
-      <div className="mb-3 flex items-center gap-2">
-        <button className="btn-ghost !px-3 !py-1.5 text-xs" onClick={() => load('/')}>Root</button>
-        <button className="btn-ghost !px-3 !py-1.5 text-xs" onClick={() => load(path.split('/').slice(0, -1).join('/') || '/')}>Up</button>
-        <span className="flex-1 truncate font-mono text-sm text-zinc-400">{path}</span>
-        <label className="btn-primary !px-3 !py-1.5 cursor-pointer text-xs">
-          <Icons.Upload className="h-3.5 w-3.5" /> Upload
-          <input type="file" className="hidden" onChange={upload} />
-        </label>
-      </div>
-
       {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
 
       {editing ? (
-        <div className="space-y-3">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-sm text-zinc-300">{editing}</span>
-            <div className="flex gap-2">
-              <button className="btn-primary !px-3 !py-1.5 text-xs" onClick={save}><Icons.Save className="h-3.5 w-3.5" /> Save</button>
-              <button className="btn-ghost !px-3 !py-1.5 text-xs" onClick={() => setEditing(null)}>Cancel</button>
+            <div className="flex items-center gap-2">
+              <button className="btn-ghost !px-3 !py-1.5 text-xs" onClick={() => setEditing(null)}><Icons.Back className="h-3.5 w-3.5" /> Back</button>
+              <span className="font-mono text-sm text-zinc-300">{editing}</span>
             </div>
+            <button className="btn-primary !px-3 !py-1.5 text-xs" onClick={save}><Icons.Save className="h-3.5 w-3.5" /> Save</button>
           </div>
-          <textarea className="input h-96 font-mono" value={content} onChange={(e) => setContent(e.target.value)} spellCheck={false} />
-        </div>
+          <textarea className="input h-[480px] font-mono text-sm" value={content} onChange={(e) => setContent(e.target.value)} spellCheck={false} />
+        </motion.div>
       ) : (
-        <Card className="!p-0 overflow-hidden">
-          {files.length === 0 ? (
-            <p className="p-6 text-center text-sm text-zinc-500">Empty directory</p>
-          ) : (
-            <table className="w-full text-sm">
-              <tbody>
-                {files.map((f) => (
-                  <tr key={f.name} className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.03]">
-                    <td className="px-4 py-2.5">
-                      <button className="flex items-center gap-2 text-zinc-300 hover:text-white" onClick={() => openFile(f)}>
-                        <span>{f.type === 'dir' ? '📁' : '📄'}</span>
-                        <span className="font-mono">{f.name}</span>
+        <>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <nav className="flex items-center gap-1 text-sm text-zinc-400">
+              <button onClick={() => load('/')} className="rounded px-1.5 py-0.5 hover:bg-white/[0.05] hover:text-white">/</button>
+              {crumbs.map((crumb, i) => {
+                const target = '/' + crumbs.slice(0, i + 1).join('/');
+                const isLast = i === crumbs.length - 1;
+                return (
+                  <React.Fragment key={i}>
+                    <span className="text-zinc-600">/</span>
+                    <button onClick={() => !isLast && load(target)} className={cn('rounded px-1.5 py-0.5', isLast ? 'text-white' : 'hover:bg-white/[0.05] hover:text-white')}>
+                      {crumb}
+                    </button>
+                  </React.Fragment>
+                );
+              })}
+            </nav>
+            <label className="btn-primary !px-3 !py-1.5 cursor-pointer text-xs">
+              <Icons.Upload className="h-3.5 w-3.5" /> Upload file
+              <input type="file" className="hidden" onChange={upload} />
+            </label>
+          </div>
+
+          <Card className="!p-0 overflow-hidden">
+            {files.length === 0 ? (
+              <div className="p-12 text-center">
+                <Icons.Folder className="mx-auto mb-3 h-12 w-12 text-zinc-600" />
+                <p className="text-sm text-zinc-500">This directory is empty.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-px bg-white/[0.04] sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                {files.map((f, i) => (
+                  <motion.div
+                    key={f.name}
+                    initial={{ opacity: 0, scale: 0.96 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.2, delay: i * 0.03 }}
+                    className="group relative bg-[#0c0c10] p-4 transition-colors hover:bg-white/[0.03]"
+                  >
+                    <button onClick={() => openFile(f)} className="flex w-full flex-col items-center gap-3 text-center">
+                      <FileIcon type={f.type} name={f.name} />
+                      {renaming === f.name ? (
+                        <input
+                          autoFocus
+                          className="input w-full text-center text-xs"
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') rename(f); if (e.key === 'Escape') setRenaming(null); }}
+                          onBlur={() => rename(f)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <>
+                          <span className="line-clamp-2 w-full text-xs font-medium text-zinc-200">{f.name}</span>
+                          <span className="text-[10px] text-zinc-500">{f.type === 'file' ? formatBytes(f.size) : 'Folder'}</span>
+                        </>
+                      )}
+                    </button>
+                    <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <button
+                        className="rounded-md border border-white/[0.08] bg-[#0c0c10] p-1 text-zinc-400 hover:text-white"
+                        onClick={(e) => { e.stopPropagation(); setRenaming(f.name); setRenameValue(f.name); }}
+                        title="Rename"
+                      >
+                        <Icons.Gear className="h-3 w-3" />
                       </button>
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-zinc-500">{f.type === 'file' ? `${(f.size / 1024).toFixed(1)} KB` : ''}</td>
-                    <td className="px-4 py-2.5 text-right">
-                      <button className="text-xs text-red-400 hover:text-red-300" onClick={() => remove(f)}>Delete</button>
-                    </td>
-                  </tr>
+                      <button
+                        className="rounded-md border border-white/[0.08] bg-[#0c0c10] p-1 text-zinc-400 hover:text-red-400"
+                        onClick={(e) => { e.stopPropagation(); remove(f); }}
+                        title="Delete"
+                      >
+                        <Icons.Trash className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </motion.div>
                 ))}
-              </tbody>
-            </table>
-          )}
-        </Card>
+              </div>
+            )}
+          </Card>
+        </>
       )}
     </div>
   );
@@ -1014,7 +1094,9 @@ export default function ServerDetail() {
       </Link>
 
       <div className="mb-6 mt-3 flex flex-wrap items-center gap-3">
-        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/5 text-xl ring-1 ring-white/10">🖥️</span>
+        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/5 ring-1 ring-white/10">
+          <Icons.Server className="h-5 w-5 text-violet-300" />
+        </span>
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-white">
             {server.name}

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../api.js';
 import { useAuth } from '../App.jsx';
+import { Icons } from '../components/ui.jsx';
 export default function Login() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -35,8 +36,8 @@ export default function Login() {
         className="relative w-full max-w-sm"
       >
         <div className="mb-8 text-center">
-          <div className="mb-3 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/25 to-fuchsia-500/10 text-3xl ring-1 ring-white/10">
-            🐦‍⬛
+          <div className="mb-3 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/25 to-fuchsia-500/10 ring-1 ring-white/10">
+            <Icons.Server className="h-8 w-8 text-violet-300" />
           </div>
           <h1 className="text-2xl font-bold text-white">Welcome back</h1>
           <p className="mt-1 text-sm text-zinc-500">Log in to manage your servers.</p>

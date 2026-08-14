@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../api.js';
-import { useAuth } from '../App.jsx';
+import { useAuth, useSettings } from '../App.jsx';
 import { Card, EmptyState, Icons, SectionHeader, ShineCard, Skeleton, SkeletonCard, SpotlightCard, StatusBadge, useToast, cn, AnimatedNumber, GlowButton } from '../components/ui.jsx';
 
 const stroke = {
@@ -216,6 +216,9 @@ export default function Dashboard() {
     );
   }
 
+  const settings = useSettings();
+  const panelName = settings['app.name'] || 'Panel';
+
   return (
     <div className="space-y-8">
       {/* Hero greeting */}
@@ -223,7 +226,7 @@ export default function Dashboard() {
         <Card className="relative overflow-hidden p-6 sm:p-8" glow>
           <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-violet-500/10 blur-3xl" />
           <div className="relative">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-violet-400">Raven Panel</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-violet-400">{panelName}</p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
               {greeting()},{' '}
               <span className="text-gradient">{user?.username}</span>
@@ -286,7 +289,7 @@ export default function Dashboard() {
         <SectionHeader title="Servers" />
         {error && <p className="text-sm text-red-400">{error}</p>}
         {servers.length === 0 ? (
-          <EmptyState icon="🖥️" title="No servers yet" sub="Ask your host to create a server for you." />
+          <EmptyState icon={<Icons.Server className="h-12 w-12 text-zinc-500" />} title="No servers yet" sub="Ask your host to create a server for you." />
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {servers.map((s, i) => (
