@@ -132,21 +132,20 @@ After the installer finishes:
 
 ### Creating the First Admin
 
-1. Open the Panel URL in your browser.
-2. Register a normal account.
-3. SSH into the server and run:
+If you used the installer and picked **Install Panel** or **Install Panel + Agent**, it already asked you for an admin username, email, and password. Just log in with those credentials.
+
+If you need to create or promote an admin manually later:
 
 ```bash
 cd /opt/raven
 docker compose exec panel node -e "
-const { pool } = require('./src/db.js');
-pool.query(\"UPDATE users SET root_admin = true WHERE username = 'YOUR_USERNAME'\").then(() => console.log('Done')).catch(e => console.error(e));
+const { registerUser } = await import('./src/auth.js');
+const { q } = await import('./src/db.js');
+const user = await registerUser('USERNAME', 'EMAIL', 'PASSWORD');
+await q('UPDATE users SET root_admin = true WHERE id = \$1', [user.id]);
+console.log('Admin created:', user.username);
 "
 ```
-
-> Replace `YOUR_USERNAME` with the username you registered.
-
-Now refresh the page — you will have access to **Admin** in the sidebar.
 
 ### Environment Variables
 

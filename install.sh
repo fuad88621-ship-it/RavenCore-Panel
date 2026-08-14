@@ -106,6 +106,70 @@ build_and_start() {
   ok "Services started"
 }
 
+wait_for_panel() {
+  info "Waiting for the panel container to be ready…"
+  local i
+  for i in {1..30}; do
+    if docker compose exec -T panel node -e "console.log('ready')" >/dev/null 2>&1; then
+      ok "Panel is ready"
+      return 0
+    fi
+    sleep 2
+  done
+  err "Panel did not become ready in time. Check logs: docker compose logs panel"
+  return 1
+}
+
+create_admin_account() {
+  echo ""
+  echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+  echo -e "${BLUE}  Create your admin account${NC}"
+  echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+  echo ""
+
+  local admin_user admin_email admin_pass admin_pass2
+  read -rp "Admin username: " admin_user
+  read -rp "Admin email:    " admin_email
+  read -rsp "Admin password: " admin_pass
+  echo ""
+  read -rsp "Confirm password: " admin_pass2
+  echo ""
+
+  if [[ -z "$admin_user" || -z "$admin_email" || -z "$admin_pass" ]]; then
+    warn "Empty fields — admin account not created. You can create one later from the README instructions."
+    return 0
+  fi
+
+  if [[ "$admin_pass" != "$admin_pass2" ]]; then
+    err "Passwords do not match — admin account not created."
+    return 1
+  fi
+
+  wait_for_panel
+
+  info "Creating admin account…"
+  if docker compose exec -T \
+    -e ADMIN_USER="$admin_user" \
+    -e ADMIN_EMAIL="$admin_email" \
+    -e ADMIN_PASS="$admin_pass" \
+    panel node -e "
+const { registerUser } = await import('./src/auth.js');
+const { q } = await import('./src/db.js');
+try {
+  const user = await registerUser(process.env.ADMIN_USER, process.env.ADMIN_EMAIL, process.env.ADMIN_PASS);
+  await q('UPDATE users SET root_admin = true WHERE id = \$1', [user.id]);
+  console.log('Admin account created: ' + user.username);
+} catch (e) {
+  console.error('Failed to create admin: ' + e.message);
+  process.exit(1);
+}
+"; then
+    ok "Admin account created: $admin_user"
+  else
+    err "Could not create admin account. See error above."
+  fi
+}
+
 print_summary() {
   echo ""
   echo -e "${GREEN}═══════════════════════════════════════════════════${NC}"
@@ -120,8 +184,7 @@ print_summary() {
   echo "    1. Update config.yml with your domain names."
   echo "    2. Point your domains to this server's IP."
   echo "    3. Run: cd $INSTALL_DIR && docker compose up -d --build"
-  echo "    4. Open the Panel URL and register your first account."
-  echo "    5. Promote that account to admin (see README)."
+  echo "    4. Open the Panel URL and log in with your admin account."
   echo ""
 }
 
@@ -144,6 +207,7 @@ install_panel() {
   download_panel
   generate_secrets
   build_and_start "panel"
+  create_admin_account
   print_summary
 }
 
@@ -162,6 +226,7 @@ install_both() {
   download_panel
   generate_secrets
   build_and_start "both"
+  create_admin_account
   print_summary
 }
 
