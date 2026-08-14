@@ -134,6 +134,15 @@ app.get('/servers/:uuid/resources', async (req, res) => {
   }
 });
 
+app.get('/servers/:uuid/install-log', async (req, res) => {
+  try {
+    const log = await docker.getInstallLog(req.params.uuid);
+    res.json({ log });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/servers/:uuid/reinstall', async (req, res) => {
   try {
     const { image, install_command } = req.body;

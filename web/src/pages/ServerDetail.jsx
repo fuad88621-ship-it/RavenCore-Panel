@@ -12,30 +12,93 @@ function StatChip({ label, value }) {
   );
 }
 
+function formatUptime(seconds) {
+  if (!seconds) return '0s';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function formatMemory(mb) {
+  if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GiB`;
+  return `${Math.round(mb)} MiB`;
+}
+
+function StatCard({ icon, label, value, sub, bar }) {
+  return (
+    <Card className="flex items-center gap-3 p-4">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-zinc-300">
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-zinc-500">{label}</p>
+        <p className="truncate font-medium text-white">{value}</p>
+        {sub && <p className="text-xs text-zinc-500">{sub}</p>}
+        {bar && (
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+            <div className="h-full bg-violet-500" style={{ width: `${Math.min(100, bar)}%` }} />
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function ConsoleTab({ server }) {
   const termRef = useRef(null);
   const wsRef = useRef(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState('');
+  const [installing, setInstalling] = useState(server.status === 'installing');
+
+  useEffect(() => {
+    setInstalling(server.status === 'installing');
+  }, [server.status]);
 
   useEffect(() => {
     let term;
+    let pollId;
     let disposed = false;
 
     async function init() {
-      const { socket } = await api.console(server.id);
-      if (disposed) return;
-
       term = new Terminal({
         cursorBlink: true,
         fontSize: 13,
         fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
         theme: { background: '#0a0a0f', foreground: '#d1d5db', cursor: '#8b5cf6' },
       });
-      await new Promise((r) => setTimeout(r, 450));
+      await new Promise((r) => setTimeout(r, 300));
       if (disposed) return;
       term.open(termRef.current);
+
+      if (installing) {
+        term.writeln('\x1b[33m● Server is installing. Install output will appear below.\x1b[0m');
+        term.writeln('');
+        let lastLog = '';
+        pollId = setInterval(async () => {
+          try {
+            const d = await api.installLog(server.id);
+            if (d.log && d.log !== lastLog) {
+              const newLines = d.log.slice(lastLog.length);
+              term.write(newLines);
+              lastLog = d.log;
+            }
+          } catch (e) {
+            // ignore poll errors
+          }
+        }, 2000);
+        return;
+      }
+
       term.writeln('\x1b[90mConnecting to console…\x1b[0m');
+
+      const { socket } = await api.console(server.id);
+      if (disposed) return;
 
       const ws = new WebSocket(socket);
       wsRef.current = ws;
@@ -68,18 +131,26 @@ function ConsoleTab({ server }) {
 
     return () => {
       disposed = true;
+      if (pollId) clearInterval(pollId);
       try { wsRef.current?.close(); } catch {}
       try { term?.dispose(); } catch {}
     };
-  }, [server.id]);
+  }, [server.id, installing]);
 
   return (
     <div>
       <div className="mb-3 flex items-center gap-2">
-        <span className={cn('chip border', connected ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : 'border-red-500/20 bg-red-500/10 text-red-400')}>
-          <span className={cn('h-1.5 w-1.5 rounded-full', connected ? 'bg-emerald-400' : 'bg-red-500')} />
-          {connected ? 'Connected' : 'Disconnected'}
-        </span>
+        {installing ? (
+          <span className="chip border border-amber-500/20 bg-amber-500/10 text-amber-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+            Installing
+          </span>
+        ) : (
+          <span className={cn('chip border', connected ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : 'border-red-500/20 bg-red-500/10 text-red-400')}>
+            <span className={cn('h-1.5 w-1.5 rounded-full', connected ? 'bg-emerald-400' : 'bg-red-500')} />
+            {connected ? 'Connected' : 'Disconnected'}
+          </span>
+        )}
         {error && <span className="text-xs text-red-400">{error}</span>}
       </div>
       <div ref={termRef} className="h-[480px] overflow-hidden rounded-xl border border-white/10 bg-[#0a0a0f]" />
@@ -922,6 +993,20 @@ export default function ServerDetail() {
     }
   }
 
+  const address = server.allocation_port
+    ? `${server.allocation_ip || '0.0.0.0'}:${server.allocation_port}`
+    : server.node_fqdn;
+
+  const statCards = resources ? [
+    { icon: <Icons.Node className="h-5 w-5" />, label: 'Address', value: address, sub: server.node_fqdn },
+    { icon: <Icons.Clock className="h-5 w-5" />, label: 'Uptime', value: formatUptime(resources.uptime_seconds) },
+    { icon: <Icons.Cpu className="h-5 w-5" />, label: 'CPU Load', value: `${resources.cpu}%`, sub: `/ ${server.cpu}%`, bar: (resources.cpu / server.cpu) * 100 },
+    { icon: <Icons.Ram className="h-5 w-5" />, label: 'Memory', value: formatMemory(resources.memory_mb), sub: `/ ${formatMemory(resources.memory_limit_mb)}`, bar: resources.memory_limit_mb ? (resources.memory_mb / resources.memory_limit_mb) * 100 : 0 },
+    { icon: <Icons.Disk className="h-5 w-5" />, label: 'Disk', value: formatMemory(resources.disk_mb), sub: resources.disk_limit_mb ? `/ ${formatMemory(resources.disk_limit_mb)}` : '', bar: resources.disk_limit_mb ? (resources.disk_mb / resources.disk_limit_mb) * 100 : 0 },
+    { icon: <Icons.CloudDown className="h-5 w-5" />, label: 'Network (In)', value: `${resources.network_rx_mb} MiB` },
+    { icon: <Icons.CloudUp className="h-5 w-5" />, label: 'Network (Out)', value: `${resources.network_tx_mb} MiB` },
+  ] : [];
+
   return (
     <div>
       <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-300">
@@ -938,14 +1023,6 @@ export default function ServerDetail() {
           <p className="text-xs text-zinc-500">
             {server.egg_name} · {server.memory_mb}MB · {server.cpu}% CPU · <span className="font-mono">{server.identifier}</span>
           </p>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          {resources && (
-            <>
-              <StatChip label="CPU" value={`${resources.cpu}%`} />
-              <StatChip label="RAM" value={`${resources.memory_mb}/${resources.memory_limit_mb}MB`} />
-            </>
-          )}
         </div>
       </div>
 
@@ -975,16 +1052,29 @@ export default function ServerDetail() {
         ))}
       </div>
 
-      {tab === 'console' && <ConsoleTab server={server} />}
-      {tab === 'files' && <FilesTab server={server} />}
-      {tab === 'databases' && <DatabasesTab server={server} />}
-      {tab === 'schedules' && <SchedulesTab server={server} />}
-      {tab === 'users' && <UsersTab server={server} />}
-      {tab === 'backups' && <BackupsTab server={server} />}
-      {tab === 'network' && <NetworkTab server={server} />}
-      {tab === 'startup' && <StartupTab server={server} />}
-      {tab === 'activity' && <ActivityTab server={server} />}
-      {tab === 'settings' && <SettingsTab server={server} onDeleted={() => navigate('/')} />}
+      {tab === 'console' ? (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <ConsoleTab server={server} />
+          </div>
+          <div className="space-y-3">
+            {!resources && <p className="text-sm text-zinc-500">Loading stats…</p>}
+            {statCards.map((s) => <StatCard key={s.label} {...s} />)}
+          </div>
+        </div>
+      ) : (
+        <>
+          {tab === 'files' && <FilesTab server={server} />}
+          {tab === 'databases' && <DatabasesTab server={server} />}
+          {tab === 'schedules' && <SchedulesTab server={server} />}
+          {tab === 'users' && <UsersTab server={server} />}
+          {tab === 'backups' && <BackupsTab server={server} />}
+          {tab === 'network' && <NetworkTab server={server} />}
+          {tab === 'startup' && <StartupTab server={server} />}
+          {tab === 'activity' && <ActivityTab server={server} />}
+          {tab === 'settings' && <SettingsTab server={server} onDeleted={() => navigate('/')} />}
+        </>
+      )}
     </div>
   );
 }

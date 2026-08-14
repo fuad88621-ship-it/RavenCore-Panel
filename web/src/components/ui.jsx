@@ -812,4 +812,18 @@ export const Icons = {
       <path d="M9 10V6.5a3 3 0 0 1 6 0V10" />
     </svg>
   ),
+  CloudDown: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <path d="M18 10h1.5a3.5 3.5 0 1 1-.5 7H18" />
+      <path d="M4 14.5A4.5 4.5 0 0 1 8.5 10h.8A7 7 0 1 1 18 16" />
+      <path d="M12 13v7M8 17l4 4 4-4" />
+    </svg>
+  ),
+  CloudUp: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <path d="M18 10h1.5a3.5 3.5 0 1 1-.5 7H18" />
+      <path d="M4 14.5A4.5 4.5 0 0 1 8.5 10h.8A7 7 0 1 1 18 16" />
+      <path d="M12 20v-7M8 13l4-4 4 4" />
+    </svg>
+  ),
 };

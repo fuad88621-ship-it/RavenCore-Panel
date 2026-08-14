@@ -18,12 +18,16 @@ async function logActivity(serverId, userId, action, metadata = {}) {
 async function getServerForUser(req, reply) {
   const server = await q1(
     `SELECT s.*, e.name AS egg_name, e.startup_command AS egg_startup, e.docker_image AS egg_image,
-            n.name AS node_name, n.fqdn AS node_fqdn, nest.name AS nest_name
+            n.name AS node_name, n.fqdn AS node_fqdn, nest.name AS nest_name,
+            a.ip AS allocation_ip, a.port AS allocation_port
      FROM servers s
      JOIN eggs e ON e.id = s.egg_id
      JOIN nodes n ON n.id = s.node_id
      JOIN nests nest ON nest.id = s.nest_id
-     WHERE s.id = $1`,
+     LEFT JOIN allocations a ON a.server_id = s.id
+     WHERE s.id = $1
+     ORDER BY a.port NULLS LAST
+     LIMIT 1`,
     [req.params.id]
   );
   if (!server) {
@@ -152,6 +156,14 @@ export async function clientRoutes(fastify) {
     const server = await getServerForUser(req, reply);
     if (!server) return;
     return agentRequest(`/servers/${server.uuid}/resources`);
+  });
+
+  // Install log
+  fastify.get('/api/client/servers/:id/install-log', { preHandler: requireAuth }, async (req, reply) => {
+    const server = await getServerForUser(req, reply);
+    if (!server) return;
+    const log = await agentRequest(`/servers/${server.uuid}/install-log`, 'GET');
+    return { log };
   });
 
   // Databases

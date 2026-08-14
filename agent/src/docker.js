@@ -1,7 +1,11 @@
 import Docker from 'dockerode';
 import fs from 'fs/promises';
 import path from 'path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { config } from './config.js';
+
+const exec = promisify(execFile);
 
 const docker = new Docker();
 
@@ -19,6 +23,21 @@ export async function ensureBotDir(uuid) {
 
 function containerName(identifier) {
   return `raven-${identifier}`;
+}
+
+// Strip Docker multiplexed stream framing so logs are readable text.
+function stripDockerStream(chunk) {
+  if (!Buffer.isBuffer(chunk) || chunk.length < 8) return chunk.toString('utf8');
+  let out = '';
+  let i = 0;
+  while (i + 8 <= chunk.length) {
+    const size = chunk.readUInt32BE(i + 4);
+    if (size <= 0 || i + 8 + size > chunk.length) break;
+    out += chunk.slice(i + 8, i + 8 + size).toString('utf8');
+    i += 8 + size;
+  }
+  // Fallback: if no frames parsed, return whole chunk
+  return out || chunk.toString('utf8');
 }
 
 function networkName(identifier) {
@@ -59,7 +78,7 @@ export async function createBot({ uuid, identifier, image, startup_command, inst
   // Pull image
   await pullImage(image);
 
-  // Install step: run install command in a one-off container
+  // Install step: run install command in a one-off container and capture logs
   if (install_command) {
     console.log(`[agent] installing ${identifier}: ${install_command.slice(0, 80)}…`);
     const installContainer = await docker.createContainer({
@@ -73,10 +92,20 @@ export async function createBot({ uuid, identifier, image, startup_command, inst
         SecurityOpt: ['no-new-privileges:true'],
       },
       Cmd: ['sh', '-c', install_command],
+      AttachStdout: true,
+      AttachStderr: true,
       Labels: { 'raven.uuid': uuid, 'raven.install': 'true' },
+    });
+    const logPath = path.join(dir, 'install.log');
+    const logHandle = await fs.open(logPath, 'w');
+    const installStream = await installContainer.attach({ stream: true, stdout: true, stderr: true });
+    installStream.on('data', (chunk) => {
+      logHandle.write(stripDockerStream(chunk));
     });
     await installContainer.start();
     await installContainer.wait();
+    installStream.end();
+    await logHandle.close();
     await installContainer.remove({ force: true });
   }
 
@@ -219,10 +248,11 @@ export async function sendCommand(uuid, command) {
 
 export async function getResources(uuid) {
   const container = await findContainer(uuid);
-  if (!container) return { running: false, cpu: 0, memory_mb: 0, memory_limit_mb: 0, disk_mb: 0 };
+  if (!container) return { running: false, cpu: 0, memory_mb: 0, memory_limit_mb: 0, disk_mb: 0, disk_limit_mb: 0, network_rx_mb: 0, network_tx_mb: 0, uptime_seconds: 0 };
   const info = await container.inspect();
   const running = info.State.Running;
-  let cpuPct = 0, memoryMb = 0, memoryLimitMb = 0;
+  let cpuPct = 0, memoryMb = 0, memoryLimitMb = 0, diskMb = 0, diskLimitMb = 0, netRxMb = 0, netTxMb = 0, uptimeSeconds = 0;
+
   if (running) {
     try {
       const stats = await container.stats({ stream: false });
@@ -232,16 +262,47 @@ export async function getResources(uuid) {
       cpuPct = sysDelta > 0 ? (cpuDelta / sysDelta) * onlineCpus * 100 : 0;
       memoryMb = stats.memory_stats.usage ? Math.round(stats.memory_stats.usage / 1024 / 1024) : 0;
       memoryLimitMb = stats.memory_stats.limit ? Math.round(stats.memory_stats.limit / 1024 / 1024) : 0;
+      const net = stats.networks ? Object.values(stats.networks)[0] : null;
+      if (net) {
+        netRxMb = Math.round((net.rx_bytes || 0) / 1024 / 1024 * 100) / 100;
+        netTxMb = Math.round((net.tx_bytes || 0) / 1024 / 1024 * 100) / 100;
+      }
     } catch (e) {
       console.error('[agent] stats error:', e.message);
     }
   }
+
+  // Disk usage from the server's bind-mounted data directory
+  try {
+    const dir = botDir(uuid);
+    const { stdout } = await exec('du', ['-sb', dir]);
+    diskMb = Math.round(parseInt(stdout.trim(), 10) / 1024 / 1024 * 100) / 100;
+  } catch (e) {
+    // ignore disk errors
+  }
+
+  // Uptime from container StartedAt
+  try {
+    const started = info.State.StartedAt ? new Date(info.State.StartedAt) : null;
+    if (started) uptimeSeconds = Math.floor((Date.now() - started.getTime()) / 1000);
+  } catch {}
+
+  // Disk limit from the container's memory-style limit isn't a thing; use spec disk_mb if available
+  try {
+    const spec = await getContainerInfo(uuid);
+    diskLimitMb = spec.disk_mb || 0;
+  } catch {}
+
   return {
     running,
     cpu: Math.round(cpuPct * 100) / 100,
     memory_mb: memoryMb,
     memory_limit_mb: memoryLimitMb,
-    disk_mb: 0,
+    disk_mb: diskMb,
+    disk_limit_mb: diskLimitMb,
+    network_rx_mb: netRxMb,
+    network_tx_mb: netTxMb,
+    uptime_seconds: uptimeSeconds,
   };
 }
 
@@ -329,6 +390,16 @@ export async function renameFile(uuid, relPath, newPath) {
 
 // ---- Console attach ----
 
+export async function getInstallLog(uuid) {
+  const dir = botDir(uuid);
+  const logPath = path.join(dir, 'install.log');
+  try {
+    return await fs.readFile(logPath, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
 export async function attachConsole(uuid, onData, onClose) {
   const container = await findContainer(uuid);
   if (!container) throw new Error('Container not found');
@@ -345,10 +416,6 @@ export async function attachConsole(uuid, onData, onClose) {
 }
 
 // ---- Backups ----
-
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-const exec = promisify(execFile);
 
 function backupPath(name) {
   return path.join(config.botDataDir, 'backups', `${name}.tar.gz`);

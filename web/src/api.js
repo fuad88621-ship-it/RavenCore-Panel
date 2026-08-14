@@ -33,6 +33,7 @@ export const api = {
   deleteFile: (id, path) => req(`/api/client/servers/${id}/files/delete`, { method: 'POST', body: JSON.stringify({ path }) }),
   renameFile: (id, path, newPath) => req(`/api/client/servers/${id}/files/rename`, { method: 'POST', body: JSON.stringify({ path, newPath }) }),
   resources: (id) => req(`/api/client/servers/${id}/resources`),
+  installLog: (id) => req(`/api/client/servers/${id}/install-log`),
   databases: (id) => req(`/api/client/servers/${id}/databases`),
   createDatabase: (id, name) => req(`/api/client/servers/${id}/databases`, { method: 'POST', body: JSON.stringify({ name }) }),
   deleteDatabase: (dbId) => req(`/api/client/databases/${dbId}`, { method: 'DELETE' }),
