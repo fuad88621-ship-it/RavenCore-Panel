@@ -1,0 +1,52 @@
+{
+    "_comment": "Minecraft Vanilla egg for RavenCore",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2024-01-01T00:00:00-00:00",
+    "name": "Minecraft (Vanilla)",
+    "author": "raven",
+    "description": "Pure vanilla Minecraft Java server from Mojang. No plugins, no mods — the original experience.",
+    "features": null,
+    "docker_images": {
+        "ghcr.io/parkervcp/yolks:java_25": "ghcr.io/parkervcp/yolks:java_25"
+    },
+    "file_denylist": [],
+    "startup": "PORT={{SERVER_PORT}}\nif [ -f server.properties ]; then sed -i \"s/^server-port=.*/server-port=${PORT}/\" server.properties; else echo \"server-port=${PORT}\" > server.properties; fi\njava -Xms128M -XX:MaxRAMPercentage=95.0 -Dterminal.jline=false -Dterminal.ansi=true -jar {{SERVER_JAR}}",
+    "config": {
+        "files": "{}",
+        "startup": "{\"done\": \"Done\"}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/bash\n# Vanilla Installation Script\n\napt-get update -qq\napt-get install -y -qq curl jq\n\nif [ ! -d /mnt/server ]; then\n    mkdir -p /mnt/server\nfi\n\ncd /mnt/server\n\nif [ -z \"${VERSION}\" ]; then\n    VERSION=\"latest\"\nfi\n\nif [ -z \"${SERVER_JAR}\" ]; then\n    SERVER_JAR=\"server.jar\"\nfi\n\n# Resolve \"latest\" to the newest release\nif [ \"${VERSION}\" = \"latest\" ]; then\n    VERSION=$(curl -s https://launchermeta.mojang.com/mc/game/version_manifest_v2.json | jq -r '.latest.release')\nfi\n\n# Find the version's manifest URL\nURL=$(curl -s https://launchermeta.mojang.com/mc/game/version_manifest_v2.json | jq -r --arg v \"${VERSION}\" '.versions[] | select(.id == $v) | .url' | head -1)\n\nif [ -z \"${URL}\" ] || [ \"${URL}\" = \"null\" ]; then\n    echo \"Version ${VERSION} not found\"\n    exit 1\nfi\n\n# Get the server jar download URL and fetch it\nJAR_URL=$(curl -s \"${URL}\" | jq -r '.downloads.server.url')\ncurl -o ${SERVER_JAR} \"${JAR_URL}\"\n\n# Accept the EULA so the server can start\necho \"eula=true\" > eula.txt\n\necho \"Vanilla ${VERSION} downloaded\"",
+            "container": "ghcr.io/parkervcp/yolks:java_25",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Server Jar",
+            "description": "The name of the server jar file.",
+            "env_variable": "SERVER_JAR",
+            "default_value": "server.jar",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:20",
+            "field_type": "text"
+        },
+        {
+            "name": "Minecraft Version",
+            "description": "The version of Minecraft to install (e.g. 1.21.4, latest).",
+            "env_variable": "VERSION",
+            "default_value": "latest",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:20",
+            "field_type": "text"
+        }
+    ]
+}
