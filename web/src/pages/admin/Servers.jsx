@@ -27,7 +27,6 @@ function Toggle({ label, checked, onChange, hint }) {
 }
 
 function CreateServerForm({ onCreated }) {
-  const [users, setUsers] = useState([]);
   const [nodes, setNodes] = useState([]);
   const [nests, setNests] = useState([]);
   const [eggs, setEggs] = useState([]);
@@ -43,12 +42,16 @@ function CreateServerForm({ onCreated }) {
     docker_image: '', skip_install: false, start_on_install: false, oom_killer: true,
     default_allocation_id: '', additional_allocation_ids: [],
   });
+  const [ownerSearch, setOwnerSearch] = useState('');
+  const [ownerResults, setOwnerResults] = useState([]);
+  const [ownerSelected, setOwnerSelected] = useState(null);
+  const [ownerSearching, setOwnerSearching] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    Promise.all([api.admin.users(), api.admin.nodes(), api.admin.nests()]).then(([u, n, ne]) => {
-      setUsers(u.users); setNodes(n.nodes); setNests(ne.nests);
+    Promise.all([api.admin.nodes(), api.admin.nests()]).then(([n, ne]) => {
+      setNodes(n.nodes); setNests(ne.nests);
       if (n.nodes[0]) setForm((f) => ({ ...f, node_id: n.nodes[0].id }));
       if (ne.nests[0]) setForm((f) => ({ ...f, nest_id: ne.nests[0].id }));
     }).catch((e) => setError(e.message));
@@ -88,6 +91,29 @@ function CreateServerForm({ onCreated }) {
     }).catch(() => {});
   }, [form.node_id]);
 
+  async function searchOwner(q) {
+    setOwnerSearch(q);
+    setOwnerSelected(null);
+    setForm((f) => ({ ...f, user_id: '' }));
+    if (q.trim().length < 3) { setOwnerResults([]); return; }
+    setOwnerSearching(true);
+    try {
+      const d = await api.userSearch(q);
+      setOwnerResults(d.users);
+    } catch (e) {
+      setOwnerResults([]);
+    } finally {
+      setOwnerSearching(false);
+    }
+  }
+
+  function pickOwner(u) {
+    setOwnerSelected(u);
+    setOwnerSearch(`${u.username} — ${u.email}`);
+    setOwnerResults([]);
+    setForm((f) => ({ ...f, user_id: u.id }));
+  }
+
   function setVar(key, value) {
     const next = { ...env, [key]: value };
     setEnv(next);
@@ -126,11 +152,32 @@ function CreateServerForm({ onCreated }) {
           <h3 className="font-semibold text-white">Basic Details</h3>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Server Name"><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></Field>
-            <Field label="Server Owner" hint="Leave unassigned to create inventory/pre-made servers.">
-              <Select value={form.user_id} onChange={(e) => setForm({ ...form, user_id: e.target.value })}>
-                <option value="">— Unassigned —</option>
-                {users.map((u) => <option key={u.id} value={u.id}>{u.username} — {u.email}</option>)}
-              </Select>
+            <Field label="Server Owner" hint="Search by username or email. Leave empty to create an unassigned inventory server.">
+              <div className="relative">
+                <input
+                  className="input"
+                  value={ownerSearch}
+                  onChange={(e) => searchOwner(e.target.value)}
+                  placeholder="Type username or email (min 3 chars)"
+                />
+                {ownerSearching && <p className="mt-1 text-xs text-zinc-500">Searching…</p>}
+                {ownerResults.length > 0 && (
+                  <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-white/10 bg-[#0d0d12] shadow-xl">
+                    {ownerResults.map((u) => (
+                      <button
+                        type="button"
+                        key={u.id}
+                        onClick={() => pickOwner(u)}
+                        className="block w-full px-4 py-2.5 text-left text-sm hover:bg-white/[0.05]"
+                      >
+                        <span className="font-medium text-white">{u.username}</span>
+                        <span className="ml-2 text-zinc-400">{u.email}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {ownerSelected && <p className="mt-1 text-xs text-emerald-400">✓ Selected: {ownerSelected.username}</p>}
+              </div>
             </Field>
             <div className="col-span-2">
               <Field label="Server Description"><input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
@@ -250,16 +297,40 @@ function CreateServerForm({ onCreated }) {
   );
 }
 
-function AssignModal({ server, users, onAssign, onCancel }) {
-  const [userId, setUserId] = useState('');
+function AssignModal({ server, onAssign, onCancel }) {
+  const [search, setSearch] = useState('');
+  const [results, setResults] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [searching, setSearching] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  async function doSearch(q) {
+    setSearch(q);
+    setSelected(null);
+    if (q.trim().length < 3) { setResults([]); return; }
+    setSearching(true);
+    try {
+      const d = await api.userSearch(q);
+      setResults(d.users);
+    } catch (e) {
+      setResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function pickUser(u) {
+    setSelected(u);
+    setSearch(`${u.username} — ${u.email}`);
+    setResults([]);
+  }
 
   async function submit(e) {
     e.preventDefault();
-    if (!userId) return;
+    if (!selected) return;
     setBusy(true);
     try {
-      await onAssign(server.id, userId);
+      await onAssign(server.id, selected.id);
     } finally {
       setBusy(false);
     }
@@ -271,12 +342,34 @@ function AssignModal({ server, users, onAssign, onCancel }) {
         <h3 className="mb-4 font-semibold text-white">Assign server</h3>
         <p className="mb-4 text-sm text-zinc-400">Choose a new owner for <b className="text-white">{server.name}</b>.</p>
         <form onSubmit={submit} className="space-y-4">
-          <Select value={userId} onChange={(e) => setUserId(e.target.value)} required>
-            <option value="">— Select user —</option>
-            {users.map((u) => <option key={u.id} value={u.id}>{u.username} — {u.email}</option>)}
-          </Select>
+          <div className="relative">
+            <input
+              className="input"
+              value={search}
+              onChange={(e) => doSearch(e.target.value)}
+              placeholder="Search username or email (min 3 chars)"
+              required
+            />
+            {searching && <p className="mt-1 text-xs text-zinc-500">Searching…</p>}
+            {results.length > 0 && (
+              <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-white/10 bg-[#0d0d12] shadow-xl">
+                {results.map((u) => (
+                  <button
+                    type="button"
+                    key={u.id}
+                    onClick={() => pickUser(u)}
+                    className="block w-full px-4 py-2.5 text-left text-sm hover:bg-white/[0.05]"
+                  >
+                    <span className="font-medium text-white">{u.username}</span>
+                    <span className="ml-2 text-zinc-400">{u.email}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {selected && <p className="mt-1 text-xs text-emerald-400">✓ Selected: {selected.username}</p>}
+          </div>
           <div className="flex gap-2">
-            <button className="btn-primary flex-1" disabled={busy}>{busy ? 'Assigning…' : 'Assign'}</button>
+            <button className="btn-primary flex-1" disabled={busy || !selected}>{busy ? 'Assigning…' : 'Assign'}</button>
             <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
           </div>
         </form>
@@ -287,7 +380,6 @@ function AssignModal({ server, users, onAssign, onCancel }) {
 
 export default function Servers() {
   const [servers, setServers] = useState([]);
-  const [users, setUsers] = useState([]);
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [assigning, setAssigning] = useState(null);
@@ -295,9 +387,8 @@ export default function Servers() {
 
   async function load(s) {
     try {
-      const [d, u] = await Promise.all([api.admin.servers(s), api.admin.users()]);
+      const d = await api.admin.servers(s);
       setServers(d.servers);
-      setUsers(u.users);
     } catch (e) {
       setError(e.message);
     }
@@ -348,7 +439,6 @@ export default function Servers() {
       {assigning && (
         <AssignModal
           server={assigning}
-          users={users}
           onAssign={assignServer}
           onCancel={() => setAssigning(null)}
         />
