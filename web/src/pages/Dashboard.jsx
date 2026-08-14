@@ -177,8 +177,6 @@ function QuickActionCard({ to, title, desc, icon, gradient }) {
 
 const QUICK_ACTIONS = [
   { to: '/', title: 'Servers', desc: 'Manage your servers', gradient: 'from-emerald-500/30 to-teal-500/15', icon: SlotIcon },
-  { to: '/servers/0', title: 'Console', desc: 'Open a server console', gradient: 'from-violet-500/30 to-fuchsia-500/15', icon: Icons.Terminal({ className: 'h-5 w-5' }) },
-  { to: '/admin', title: 'Admin', desc: 'Administration tools', gradient: 'from-sky-500/30 to-blue-500/15', icon: Icons.Shield({ className: 'h-5 w-5' }) },
   { to: '/admin/settings', title: 'Settings', desc: 'Panel configuration', gradient: 'from-amber-500/25 to-orange-500/10', icon: Icons.Gear({ className: 'h-5 w-5' }) },
 ];
 
