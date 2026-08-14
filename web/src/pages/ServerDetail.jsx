@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
 import { api } from '../api.js';
 import { useDebouncedCallback } from '../useDebounce.js';
 import { Card, ErrorState, Icons, Select, Skeleton, StatusBadge, useToast, cn } from '../components/ui.jsx';
@@ -91,6 +92,8 @@ function ConsoleTab({ server }) {
     let startupTimer;
     let disposed = false;
     let onVis;
+    let fitAddon;
+    let resizeObserver;
 
     function setConn(v) { if (!disposed) setConnected(v); }
     function setErr(v) { if (!disposed) setError(v); }
@@ -102,9 +105,18 @@ function ConsoleTab({ server }) {
         fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
         theme: { background: '#0a0a0f', foreground: '#d1d5db', cursor: '#8b5cf6' },
       });
+      fitAddon = new FitAddon();
+      term.loadAddon(fitAddon);
       await new Promise((r) => { startupTimer = setTimeout(r, 300); });
       if (disposed) return;
       term.open(termRef.current);
+      try { fitAddon.fit(); } catch {}
+      // Keep the terminal sized to its container (fixes glitches when the
+      // console tab is hidden/shown or the window resizes).
+      resizeObserver = new ResizeObserver(() => {
+        if (!disposed) { try { fitAddon.fit(); } catch {} }
+      });
+      if (termRef.current) resizeObserver.observe(termRef.current);
 
       if (installing) {
         term.writeln('\x1b[33m● Server is installing. Install output will appear below.\x1b[0m');
@@ -168,6 +180,7 @@ function ConsoleTab({ server }) {
       disposed = true;
       if (pollId) clearInterval(pollId);
       if (startupTimer) clearTimeout(startupTimer);
+      try { resizeObserver?.disconnect(); } catch {}
       try { wsRef.current?.close(); } catch {}
       try { term?.dispose(); } catch {}
       if (onVis) document.removeEventListener('visibilitychange', onVis);

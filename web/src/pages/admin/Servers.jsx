@@ -283,7 +283,21 @@ function CreateServerForm({ onCreated }) {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {eggVars.map((v) => (
                 <Field key={v.id} label={`${v.name} — {{${v.env_variable}}}`} hint={v.description || `Validation: ${v.rules || 'none'}`}>
-                  <input className="input font-mono" value={env[v.env_variable] ?? ''} onChange={(e) => setVar(v.env_variable, e.target.value)} />
+                  {v.env_variable === 'VERSION' ? (
+                    <Select value={env[v.env_variable] ?? ''} onChange={(e) => setVar(v.env_variable, e.target.value)}>
+                      <option value="latest">Latest</option>
+                      <option value="1.21.11">1.21.11</option>
+                      <option value="1.21.4">1.21.4</option>
+                      <option value="1.21.1">1.21.1</option>
+                      <option value="1.20.6">1.20.6</option>
+                      <option value="1.20.4">1.20.4</option>
+                      <option value="1.19.4">1.19.4</option>
+                      <option value="1.18.2">1.18.2</option>
+                      <option value="1.16.5">1.16.5</option>
+                    </Select>
+                  ) : (
+                    <input className="input font-mono" value={env[v.env_variable] ?? ''} onChange={(e) => setVar(v.env_variable, e.target.value)} />
+                  )}
                 </Field>
               ))}
             </div>
