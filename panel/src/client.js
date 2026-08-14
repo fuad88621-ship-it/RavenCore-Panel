@@ -226,18 +226,46 @@ export async function clientRoutes(fastify) {
   });
 
   // Plugins (Modrinth marketplace)
+  const pluginVersionCache = new Map(); // project_id -> { versions, ts }
+  async function pluginCompatible(projectId, serverVersion) {
+    if (!serverVersion || serverVersion === 'latest') return { compatible: true, version: null };
+    const cached = pluginVersionCache.get(projectId);
+    if (cached && Date.now() - cached.ts < 600000) return cached;
+    try {
+      const res = await fetch(`https://api.modrinth.com/v2/project/${encodeURIComponent(projectId)}/version`);
+      if (!res.ok) return { compatible: true, version: null };
+      const versions = await res.json();
+      const match = (versions || []).find((v) => (v.game_versions || []).includes(serverVersion));
+      const out = { compatible: !!match, version: match ? match.version_number : null };
+      pluginVersionCache.set(projectId, { ...out, ts: Date.now() });
+      return out;
+    } catch {
+      return { compatible: true, version: null };
+    }
+  }
+
   fastify.get('/api/client/servers/:id/plugins/search', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
     const qq = String(req.query.q || '').trim();
-    if (qq.length < 2) return { hits: [] };
-    const res = await fetch(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(qq)}&facets=${encodeURIComponent(JSON.stringify([['project_type:plugin']]))}&limit=12`);
+    // Empty query -> popular plugins (sorted by downloads)
+    const facets = [['project_type:plugin']];
+    const url = `https://api.modrinth.com/v2/search?query=${encodeURIComponent(qq)}&facets=${encodeURIComponent(JSON.stringify(facets))}&limit=12&index=${qq ? 'relevance' : 'downloads'}`;
+    const res = await fetch(url);
     if (!res.ok) return reply.code(502).send({ error: 'Plugin search failed' });
     const data = await res.json();
-    return { hits: (data.hits || []).map((h) => ({
-      project_id: h.project_id, title: h.title, description: h.description,
-      downloads: h.downloads, icon_url: h.icon_url, author: h.author, slug: h.slug,
-    })) };
+    // Server's Minecraft version (from the egg's VERSION variable)
+    let serverVersion = null;
+    try { serverVersion = (JSON.parse(server.env || '{}') || {}).VERSION || null; } catch {}
+    const hits = await Promise.all((data.hits || []).map(async (h) => {
+      const compat = await pluginCompatible(h.project_id, serverVersion);
+      return {
+        project_id: h.project_id, title: h.title, description: h.description,
+        downloads: h.downloads, icon_url: h.icon_url, author: h.author, slug: h.slug,
+        compatible: compat.compatible, compatible_version: compat.version,
+      };
+    }));
+    return { hits, server_version: serverVersion };
   });
 
   fastify.get('/api/client/servers/:id/plugins', { preHandler: requireAuth }, async (req, reply) => {

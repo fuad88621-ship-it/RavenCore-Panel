@@ -1615,8 +1615,10 @@ function PluginsTab({ server }) {
 
   useEffect(() => { loadInstalled(); }, [server.id]);
 
+  // Load popular plugins on mount (empty query)
+  useEffect(() => { doSearch(''); }, [server.id]);
+
   async function doSearch(q) {
-    if (q.trim().length < 2) { setHits([]); return; }
     setSearching(true);
     try {
       const d = await api.pluginsSearch(server.id, q);
@@ -1704,6 +1706,15 @@ function PluginsTab({ server }) {
                   <p className="truncate text-sm font-medium text-white">{p.title}</p>
                   <p className="truncate text-xs text-zinc-500">{p.description}</p>
                   <p className="text-[11px] text-zinc-600">{p.author} · {p.downloads.toLocaleString()} downloads</p>
+                  {p.compatible ? (
+                    <span className="chip mt-1 border border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
+                      ✓ Works on {p.compatible_version || 'your version'}
+                    </span>
+                  ) : (
+                    <span className="chip mt-1 border border-amber-500/20 bg-amber-500/10 text-amber-300">
+                      ⚠ May not work on your version
+                    </span>
+                  )}
                 </div>
                 <button
                   className="btn-primary !px-3 !py-1.5 text-xs shrink-0"

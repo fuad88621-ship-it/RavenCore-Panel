@@ -11,6 +11,10 @@ const docker = new Docker();
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Previous CPU sample per container, used to compute real deltas between
+// consecutive polls (Docker's one-shot stats don't provide reliable deltas).
+const lastCpuSample = new Map();
+
 export function botDir(uuid) {
   return path.join(config.botDataDir, uuid);
 }
@@ -273,16 +277,21 @@ export async function getResources(uuid) {
   if (running) {
     try {
       const stats = await container.stats({ stream: false });
-      const cpuDelta = stats.cpu_stats.cpu_usage.total_usage - (stats.precpu_stats.cpu_usage?.total_usage || 0);
-      const sysDelta = (stats.cpu_stats.system_cpu_usage || 0) - (stats.precpu_stats.system_cpu_usage || 0);
       const onlineCpus = stats.cpu_stats.online_cpus || 1;
-      // Guard against stale/negative deltas (e.g. precpu_stats from a
-      // previous container instance after a recreate) that would produce
-      // impossible CPU percentages.
-      let cpuPct = 0;
-      if (sysDelta > 0 && cpuDelta >= 0 && cpuDelta <= sysDelta) {
-        cpuPct = (cpuDelta / sysDelta) * onlineCpus * 100;
+      const cpuNow = stats.cpu_stats.cpu_usage.total_usage;
+      const sysNow = stats.cpu_stats.system_cpu_usage || 0;
+      // Docker's one-shot stats often return precpu_stats == cpu_stats (zero
+      // delta), so we keep our own previous sample and compute the delta
+      // between consecutive agent polls instead.
+      const prev = lastCpuSample.get(uuid);
+      if (prev && sysNow > prev.sys && cpuNow >= prev.cpu) {
+        const cpuDelta = cpuNow - prev.cpu;
+        const sysDelta = sysNow - prev.sys;
+        if (cpuDelta <= sysDelta) {
+          cpuPct = (cpuDelta / sysDelta) * onlineCpus * 100;
+        }
       }
+      lastCpuSample.set(uuid, { cpu: cpuNow, sys: sysNow });
       // Cap at the container's configured limit (NanoCpus) so the panel
       // never shows usage above what the server is actually allowed.
       const nanoLimit = info.HostConfig?.NanoCpus || 0;
