@@ -2,7 +2,7 @@ import { q, q1, genUuid, genIdentifier } from './db.js';
 import crypto from 'node:crypto';
 import { requireAdmin } from './auth.js';
 import { agentRequest, agentRequestFor } from './agent-client.js';
-import { config } from './config.js';
+import { config, agentInternalUrl } from './config.js';
 
 async function logActivity(serverId, userId, action, metadata = {}) {
   try {
@@ -292,6 +292,137 @@ export async function adminServerRoutes(fastify) {
     await q(`UPDATE allocations SET server_id = NULL WHERE server_id = $1`, [server.id]);
     await q(`DELETE FROM servers WHERE id = $1`, [server.id]);
     return { ok: true };
+  });
+
+  // ── Transfer a server to another node ───────────────────────────────
+  // Stop on source → create on destination (offline) → move files via the
+  // agents (source pushes tar.gz to dest's import endpoint) → delete source
+  // container → re-point allocations/DB → auto-start if it was running.
+  fastify.post('/api/admin/servers/:id/transfer', { preHandler: requireAdmin }, async (req, reply) => {
+    const { node_id } = req.body || {};
+    const server = await q1(`SELECT * FROM servers WHERE id = $1`, [req.params.id]);
+    if (!server) return reply.code(404).send({ error: 'Server not found' });
+    if (!node_id) return reply.code(400).send({ error: 'node_id is required' });
+    const dest = await q1(`SELECT * FROM nodes WHERE id = $1 AND enabled = true`, [node_id]);
+    if (!dest) return reply.code(400).send({ error: 'Destination node not found or disabled' });
+    if (dest.id === server.node_id) return reply.code(400).send({ error: 'Server is already on that node' });
+    const src = await q1(`SELECT * FROM nodes WHERE id = $1`, [server.node_id]);
+    if (!src) return reply.code(400).send({ error: 'Source node not found' });
+    const egg = await q1(`SELECT mount_target FROM eggs WHERE id = $1`, [server.egg_id]);
+
+    // Destination capacity check (same logic as create)
+    const used = await q1(
+      `SELECT COALESCE(SUM(memory_mb),0)::int AS mem, COALESCE(SUM(disk_mb),0)::int AS disk, COALESCE(SUM(cpu),0)::int AS cpu
+       FROM servers WHERE node_id = $1`,
+      [dest.id]
+    );
+    const memCap = dest.memory_overallocate === -1 ? Infinity : dest.memory_mb + Math.round(dest.memory_mb * dest.memory_overallocate / 100);
+    const diskCap = dest.disk_overallocate === -1 ? Infinity : dest.disk_mb + Math.round(dest.disk_mb * dest.disk_overallocate / 100);
+    const cpuCap = dest.cpu_overallocate === -1 ? Infinity : dest.cpu_cores * 100 + Math.round(dest.cpu_cores * 100 * dest.cpu_overallocate / 100);
+    if (used.mem + server.memory_mb > memCap) return reply.code(400).send({ error: 'Destination node out of memory' });
+    if (used.disk + server.disk_mb > diskCap) return reply.code(400).send({ error: 'Destination node out of disk' });
+    if (used.cpu + server.cpu > cpuCap) return reply.code(400).send({ error: 'Destination node out of CPU' });
+
+    const wasRunning = server.status === 'running';
+    const wasSuspended = server.status === 'suspended';
+
+    // 1. Stop on the source node (expected stop — crash monitor won't restart it)
+    try {
+      await agentRequestFor(server.uuid, `/servers/${server.uuid}/power`, 'POST', { action: 'stop' });
+    } catch {}
+
+    // 2. Pick a free allocation on the destination node
+    const free = await q1(
+      `SELECT * FROM allocations WHERE node_id = $1 AND server_id IS NULL ORDER BY port LIMIT 1`,
+      [dest.id]
+    );
+    const newPort = free ? free.port : null;
+
+    // 3. Create the container on the destination (no install, stays offline)
+    const isLocalDest = dest.name === config.node.name || dest.fqdn === config.node.fqdn;
+    const destBase = isLocalDest ? agentInternalUrl : `${dest.scheme || 'http'}://${dest.fqdn}:${dest.port}`;
+    const destToken = isLocalDest ? config.security.agent_token : dest.daemon_token;
+
+    let createRes;
+    try {
+      createRes = await agentRequest('/servers', 'POST', {
+        uuid: server.uuid,
+        identifier: server.identifier,
+        image: server.docker_image,
+        startup_command: server.startup_command,
+        install_command: null,
+        memory_mb: server.memory_mb,
+        disk_mb: server.disk_mb,
+        cpu: server.cpu,
+        cpu_pinning: server.cpu_pinning || '',
+        oom_killer: server.oom_killer !== false,
+        io: server.io,
+        env: server.env,
+        mounts: [],
+        mount_target: (egg && egg.mount_target) || '/home/container',
+        sftp_password: server.sftp_password,
+        allocation_port: newPort,
+        should_run: false,
+      }, { node: dest });
+    } catch (e) {
+      return reply.code(500).send({ error: `Failed to create server on destination node: ${e.message}` });
+    }
+
+    // Same-agent transfer (multiple nodes on one host share the agent's data
+    // dir): the destination createBot already removed the same-named source
+    // container and the files are already in the shared dir — no file move and
+    // no source cleanup needed. Cross-host transfers stream the files and then
+    // delete the source container + its data dir.
+    const isLocalSrc = src.name === config.node.name || src.fqdn === config.node.fqdn;
+    const sameAgent = (isLocalSrc && isLocalDest)
+      || (src.fqdn === dest.fqdn && src.port === dest.port && (src.scheme || 'http') === (dest.scheme || 'http'));
+
+    if (!sameAgent) {
+      // 4. Move the files: source agent pushes a tar.gz to the destination agent
+      try {
+        await agentRequestFor(server.uuid, `/servers/${server.uuid}/transfer`, 'POST', {
+          url: `${destBase}/servers/${server.uuid}/files/import`,
+          token: destToken,
+        });
+      } catch (e) {
+        // Roll back: remove the half-created destination container
+        try { await agentRequest(`/servers/${server.uuid}`, 'DELETE', { keep_files: true }, { node: dest }); } catch {}
+        return reply.code(500).send({ error: `File transfer failed: ${e.message}` });
+      }
+
+      // 5. Remove the source container (its data dir goes with it — files already moved)
+      try { await agentRequestFor(server.uuid, `/servers/${server.uuid}`, 'DELETE'); } catch {}
+    }
+
+    // 6. Re-point allocations
+    await q(`UPDATE allocations SET server_id = NULL WHERE node_id = $1 AND server_id = $2`, [src.id, server.id]);
+    if (free) {
+      await q(`UPDATE allocations SET server_id = $1 WHERE id = $2`, [server.id, free.id]);
+    }
+
+    // 7. Update the server record
+    await q(
+      `UPDATE servers SET node_id = $1, container_id = $2, status = $3, updated_at = now() WHERE id = $4`,
+      [dest.id, createRes.container_id, wasSuspended ? 'suspended' : 'offline', server.id]
+    );
+
+    // 8. Auto-start if it was running
+    let started = false;
+    if (wasRunning) {
+      try {
+        await agentRequest(`/servers/${server.uuid}/power`, 'POST', { action: 'start' }, { node: dest });
+        await q(`UPDATE servers SET status = 'running' WHERE id = $1`, [server.id]);
+        started = true;
+      } catch {}
+    }
+
+    await logActivity(server.id, req.user.id, 'server_transferred', {
+      name: server.name,
+      from: src.name,
+      to: dest.name,
+      port: newPort,
+    });
+    return { ok: true, container_id: createRes.container_id, port: newPort, started };
   });
 
   // Power control
