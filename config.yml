@@ -1,0 +1,70 @@
+# ─────────────────────────────────────────────────────────────
+# Raven Panel — configuration
+# Every setting here is customizable. Secrets use ${ENV_VAR}
+# syntax and are pulled from the environment (.env file).
+# ─────────────────────────────────────────────────────────────
+
+app:
+  name: Raven Panel
+  description: Discord bot hosting panel
+  url: https://panel.ravenshop.store
+  timezone: UTC
+  locale: en
+
+panel:
+  port: 3000
+
+database:
+  host: postgres
+  port: 5432
+  user: raven
+  password: ${DB_PASSWORD}
+  name: raven
+
+redis:
+  host: redis
+  port: 6379
+
+# The local node auto-registers on first boot.
+node:
+  name: Node-01
+  fqdn: node.ravenshop.store
+  port: 8080
+  memory_mb: 7680
+  disk_mb: 80000
+  cpu_cores: 4
+  # Percentage of resources that can be over-allocated (0-100)
+  memory_overallocate: 0
+  disk_overallocate: 0
+  cpu_overallocate: 0
+
+security:
+  session_secret: ${SESSION_SECRET}
+  agent_token: ${AGENT_TOKEN}
+  console_secret: ${CONSOLE_SECRET}
+  # Max login/register attempts per minute per IP
+  rate_limit: 20
+  # Require email verification (not implemented yet)
+  require_email_verify: false
+
+# Default limits applied when an admin creates a server
+# without specifying limits. Change these freely — each server's
+# limits are set individually at creation time.
+defaults:
+  memory_mb: 1024
+  disk_mb: 3072
+  cpu: 150
+  swap_mb: 0
+  io: 500
+  databases: 1
+  allocations: 1
+  backups: 0
+
+# Database server used for per-server MySQL databases
+# (uses root so it can create databases/users for each server)
+database_server:
+  host: mariadb
+  port: 3306
+  user: root
+  password: ${DB_PASSWORD}
+  root_password: ${DB_PASSWORD}

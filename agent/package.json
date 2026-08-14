@@ -1,0 +1,17 @@
+{
+  "name": "raven-agent",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "dockerode": "^4.0.2",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "ssh2": "^0.8.9",
+    "ssh2-sftp-server": "^1.1.2",
+    "ws": "^8.18.0"
+  }
+}

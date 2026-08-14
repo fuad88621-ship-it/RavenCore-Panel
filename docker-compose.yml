@@ -1,0 +1,127 @@
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    networks: [raven]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: raven
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: raven
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    networks: [raven]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    networks: [raven]
+
+  # Per-server MySQL databases
+  mariadb:
+    image: mariadb:11
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_PASSWORD}
+      MARIADB_USER: raven
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+    command: --max-connections=100 --innodb-buffer-pool-size=128M
+    volumes:
+      - mariadbdata:/var/lib/mysql
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    networks: [raven]
+
+  panel:
+    build: ./panel
+    restart: unless-stopped
+    volumes:
+      - ./config.yml:/config.yml:ro
+    environment:
+      NODE_OPTIONS: --max-old-space-size=256
+      DB_PASSWORD: ${DB_PASSWORD}
+      SESSION_SECRET: ${SESSION_SECRET}
+      AGENT_TOKEN: ${AGENT_TOKEN}
+      CONSOLE_SECRET: ${CONSOLE_SECRET}
+      PANEL_URL: https://panel.ravenshop.store
+      NODE_URL: https://node.ravenshop.store
+      AGENT_INTERNAL_URL: http://agent:8080
+      NODE_NAME: ${NODE_NAME}
+      NODE_FQDN: node.ravenshop.store
+      NODE_MEMORY_MB: ${NODE_MEMORY_MB}
+      NODE_DISK_MB: ${NODE_DISK_MB}
+      NODE_CPU_CORES: ${NODE_CPU_CORES}
+    mem_limit: 512m
+    depends_on:
+      - postgres
+      - redis
+      - mariadb
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    networks: [raven]
+
+  agent:
+    build: ./agent
+    restart: unless-stopped
+    ports:
+      - "2022:2022"
+    environment:
+      NODE_OPTIONS: --max-old-space-size=256
+      AGENT_TOKEN: ${AGENT_TOKEN}
+      CONSOLE_SECRET: ${CONSOLE_SECRET}
+      BOT_DATA_DIR: /var/lib/raven/bots
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Host bind mount (NOT a named volume) so bot containers can bind-mount
+      # the same host path for their /app volume.
+      - /var/lib/raven/bots:/var/lib/raven/bots
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+    networks: [raven]
+
+networks:
+  raven:
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pgdata:
+  mariadbdata:
