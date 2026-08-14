@@ -1,0 +1,62 @@
+{
+    "_comment": "Minecraft Paper egg for RavenCore",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2024-01-01T00:00:00-00:00",
+    "name": "Minecraft (Paper)",
+    "author": "raven",
+    "description": "Minecraft Java server running Paper. Supports Vanilla, Paper, and Spigot.",
+    "features": null,
+    "docker_images": {
+        "ghcr.io/parkervcp/yolks:java_21": "ghcr.io/parkervcp/yolks:java_21"
+    },
+    "file_denylist": [],
+    "startup": "java -Xms128M -XX:MaxRAMPercentage=95.0 -Dterminal.jline=false -Dterminal.ansi=true -jar {{SERVER_JAR}}",
+    "config": {
+        "files": "{}",
+        "startup": "{\"done\": \"Done\"}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!\/bin\/bash\r\n# Paper Installation Script\r\n\r\napt update\r\napt install -y curl jq\r\n\r\nif [ ! -d \/mnt\/server ]; then\r\n    mkdir -p \/mnt\/server\r\nfi\r\n\r\ncd \/mnt\/server\r\n\r\nif [ -z \"${VERSION}\" ]; then\r\n    VERSION=\"latest\"\r\nfi\r\n\r\nif [ -z \"${BUILD}\" ]; then\r\n    BUILD=\"latest\"\r\nfi\r\n\r\nif [ -z \"${SERVER_JAR}\" ]; then\r\n    SERVER_JAR=\"server.jar\"\r\nfi\r\n\r\n# Resolve the latest build number if requested\r\nif [ \"${BUILD}\" = \"latest\" ]; then\r\n    BUILD=$(curl -s https:\/\/api.papermc.io\/v2\/projects\/paper\/versions\/${VERSION}\/builds | jq -r '.builds[-1].build')\r\nfi\r\n\r\n# Download the Paper jar\r\ncurl -o ${SERVER_JAR} https:\/\/api.papermc.io\/v2\/projects\/paper\/versions\/${VERSION}\/builds\/${BUILD}\/downloads\/paper-${VERSION}-${BUILD}.jar\r\n\r\n# Accept the EULA so the server can start\r\necho \"eula=true\" > eula.txt\r\n\r\necho \"Paper ${VERSION} build ${BUILD} downloaded\"",
+            "container": "ghcr.io/parkervcp/yolks:java_21",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Server Jar",
+            "description": "The name of the server jar file.",
+            "env_variable": "SERVER_JAR",
+            "default_value": "server.jar",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:20",
+            "field_type": "text"
+        },
+        {
+            "name": "Minecraft Version",
+            "description": "The version of Minecraft to install (e.g. 1.20.4, latest).",
+            "env_variable": "VERSION",
+            "default_value": "latest",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:20",
+            "field_type": "text"
+        },
+        {
+            "name": "Build",
+            "description": "The Paper build to install (latest or a specific build number).",
+            "env_variable": "BUILD",
+            "default_value": "latest",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:20",
+            "field_type": "text"
+        }
+    ]
+}

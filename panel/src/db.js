@@ -258,7 +258,7 @@ async function seedDefaults() {
     nestId = n.id;
   }
 
-  const eggFiles = ['nodejs', 'python', 'golang', 'java'];
+  const eggFiles = ['nodejs', 'python', 'golang', 'java', 'minecraft'];
   for (const name of eggFiles) {
     await importEgg(name, nestId);
   }

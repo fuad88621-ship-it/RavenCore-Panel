@@ -34,7 +34,7 @@ function formatMemory(mb) {
   return `${Math.round(mb)} MiB`;
 }
 
-function StatCard({ icon, label, value, sub, bar, index }) {
+function StatCard({ icon, label, value, sub, bar, index, copy }) {
   const hasBar = typeof bar === 'number';
   const pct = hasBar ? Math.min(100, Math.max(0, bar)) : 0;
   return (
@@ -49,9 +49,19 @@ function StatCard({ icon, label, value, sub, bar, index }) {
         </span>
         <div className="flex min-w-0 flex-1 flex-col justify-center">
           <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{label}</p>
-          <div className="flex items-baseline gap-1.5 whitespace-nowrap">
-            <p className="truncate text-base font-semibold text-white">{value}</p>
+          <div className={cn('flex items-center gap-1.5', copy ? 'flex-wrap' : 'whitespace-nowrap')}>
+            <p className={cn('text-base font-semibold text-white', copy ? 'break-all' : 'truncate')}>{value}</p>
             {sub && <p className="truncate text-xs text-zinc-500">{sub}</p>}
+            {copy && (
+              <button
+                className="ml-auto shrink-0 rounded p-1 text-zinc-500 transition hover:bg-white/[0.06] hover:text-violet-300"
+                onClick={() => navigator.clipboard.writeText(copy)}
+                title="Copy address"
+                aria-label="Copy address"
+              >
+                <Icons.Copy className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
           {hasBar && (
             <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/10">
@@ -1549,7 +1559,7 @@ export default function ServerDetail() {
   const isOffline = server?.status !== 'running';
 
   const statCards = useMemo(() => resources ? [
-    { icon: <Icons.Node className="h-5 w-5" />, label: 'Address', value: address, sub: server?.node_fqdn },
+    { icon: <Icons.Node className="h-5 w-5" />, label: 'Address', value: address, sub: server?.node_fqdn, copy: address },
     { icon: <Icons.Clock className="h-5 w-5" />, label: 'Uptime', value: isOffline ? 'Offline' : formatUptime(resources.uptime_seconds) },
     { icon: <Icons.Cpu className="h-5 w-5" />, label: 'CPU Load', value: isOffline ? '—' : `${resources.cpu}%`, sub: isOffline ? undefined : `/ ${server?.cpu}%`, bar: isOffline ? 0 : (resources.cpu / server?.cpu) * 100 },
     { icon: <Icons.Ram className="h-5 w-5" />, label: 'Memory', value: isOffline ? '—' : formatMemory(resources.memory_mb), sub: isOffline ? undefined : `/ ${formatMemory(memLimitMb)}`, bar: isOffline ? 0 : (resources.memory_mb / memLimitMb) * 100 },
