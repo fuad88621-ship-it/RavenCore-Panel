@@ -1527,6 +1527,37 @@ export default function ServerDetail() {
     };
   }, [server?.id]);
 
+  const tabs = useMemo(() => [
+    { id: 'console', label: 'Console', icon: <Icons.Terminal className="h-4 w-4" /> },
+    { id: 'files', label: 'Files', icon: <Icons.Folder className="h-4 w-4" /> },
+    { id: 'databases', label: 'Databases', icon: <Icons.Database className="h-4 w-4" /> },
+    { id: 'schedules', label: 'Schedules', icon: <Icons.Clock className="h-4 w-4" /> },
+    { id: 'users', label: 'Users', icon: <Icons.Users className="h-4 w-4" /> },
+    { id: 'backups', label: 'Backups', icon: <Icons.Save className="h-4 w-4" /> },
+    { id: 'network', label: 'Network', icon: <Icons.Node className="h-4 w-4" /> },
+    { id: 'startup', label: 'Startup', icon: <Icons.Play className="h-4 w-4" /> },
+    { id: 'activity', label: 'Activity', icon: <Icons.Clock className="h-4 w-4" /> },
+    { id: 'settings', label: 'Settings', icon: <Icons.Gear className="h-4 w-4" /> },
+  ], []);
+
+  const address = server?.allocation_port
+    ? `${server?.allocation_ip || '0.0.0.0'}:${server.allocation_port}`
+    : server?.node_fqdn;
+
+  const memLimitMb = resources?.memory_limit_mb || server?.memory_mb || 1;
+  const diskLimitMb = resources?.disk_limit_mb || server?.disk_mb || 1;
+  const isOffline = server?.status !== 'running';
+
+  const statCards = useMemo(() => resources ? [
+    { icon: <Icons.Node className="h-5 w-5" />, label: 'Address', value: address, sub: server?.node_fqdn },
+    { icon: <Icons.Clock className="h-5 w-5" />, label: 'Uptime', value: isOffline ? 'Offline' : formatUptime(resources.uptime_seconds) },
+    { icon: <Icons.Cpu className="h-5 w-5" />, label: 'CPU Load', value: isOffline ? '—' : `${resources.cpu}%`, sub: isOffline ? undefined : `/ ${server?.cpu}%`, bar: isOffline ? 0 : (resources.cpu / server?.cpu) * 100 },
+    { icon: <Icons.Ram className="h-5 w-5" />, label: 'Memory', value: isOffline ? '—' : formatMemory(resources.memory_mb), sub: isOffline ? undefined : `/ ${formatMemory(memLimitMb)}`, bar: isOffline ? 0 : (resources.memory_mb / memLimitMb) * 100 },
+    { icon: <Icons.Disk className="h-5 w-5" />, label: 'Disk', value: isOffline ? '—' : formatMemory(resources.disk_mb), sub: isOffline ? undefined : `/ ${formatMemory(diskLimitMb)}`, bar: isOffline ? 0 : (resources.disk_mb / diskLimitMb) * 100 },
+    { icon: <Icons.CloudDown className="h-5 w-5" />, label: 'Network (In)', value: isOffline ? '—' : `${resources.network_rx_mb} MiB` },
+    { icon: <Icons.CloudUp className="h-5 w-5" />, label: 'Network (Out)', value: isOffline ? '—' : `${resources.network_tx_mb} MiB` },
+  ] : [], [resources, address, server?.node_fqdn, server?.cpu, memLimitMb, diskLimitMb, isOffline]);
+
   if (error) return <ErrorState title="Failed to load server" sub={error} onRetry={() => window.location.reload()} />;
   if (!server) {
     return (
@@ -1554,19 +1585,6 @@ export default function ServerDetail() {
     );
   }
 
-  const tabs = useMemo(() => [
-    { id: 'console', label: 'Console', icon: <Icons.Terminal className="h-4 w-4" /> },
-    { id: 'files', label: 'Files', icon: <Icons.Folder className="h-4 w-4" /> },
-    { id: 'databases', label: 'Databases', icon: <Icons.Database className="h-4 w-4" /> },
-    { id: 'schedules', label: 'Schedules', icon: <Icons.Clock className="h-4 w-4" /> },
-    { id: 'users', label: 'Users', icon: <Icons.Users className="h-4 w-4" /> },
-    { id: 'backups', label: 'Backups', icon: <Icons.Save className="h-4 w-4" /> },
-    { id: 'network', label: 'Network', icon: <Icons.Node className="h-4 w-4" /> },
-    { id: 'startup', label: 'Startup', icon: <Icons.Play className="h-4 w-4" /> },
-    { id: 'activity', label: 'Activity', icon: <Icons.Clock className="h-4 w-4" /> },
-    { id: 'settings', label: 'Settings', icon: <Icons.Gear className="h-4 w-4" /> },
-  ], []);
-
   async function power(action) {
     try {
       await api.power(server.id, action);
@@ -1576,24 +1594,6 @@ export default function ServerDetail() {
       setError(e.message);
     }
   }
-
-  const address = server.allocation_port
-    ? `${server.allocation_ip || '0.0.0.0'}:${server.allocation_port}`
-    : server.node_fqdn;
-
-  const memLimitMb = resources?.memory_limit_mb || server.memory_mb || 1;
-  const diskLimitMb = resources?.disk_limit_mb || server.disk_mb || 1;
-  const isOffline = server.status !== 'running';
-
-  const statCards = useMemo(() => resources ? [
-    { icon: <Icons.Node className="h-5 w-5" />, label: 'Address', value: address, sub: server.node_fqdn },
-    { icon: <Icons.Clock className="h-5 w-5" />, label: 'Uptime', value: isOffline ? 'Offline' : formatUptime(resources.uptime_seconds) },
-    { icon: <Icons.Cpu className="h-5 w-5" />, label: 'CPU Load', value: isOffline ? '—' : `${resources.cpu}%`, sub: isOffline ? undefined : `/ ${server.cpu}%`, bar: isOffline ? 0 : (resources.cpu / server.cpu) * 100 },
-    { icon: <Icons.Ram className="h-5 w-5" />, label: 'Memory', value: isOffline ? '—' : formatMemory(resources.memory_mb), sub: isOffline ? undefined : `/ ${formatMemory(memLimitMb)}`, bar: isOffline ? 0 : (resources.memory_mb / memLimitMb) * 100 },
-    { icon: <Icons.Disk className="h-5 w-5" />, label: 'Disk', value: isOffline ? '—' : formatMemory(resources.disk_mb), sub: isOffline ? undefined : `/ ${formatMemory(diskLimitMb)}`, bar: isOffline ? 0 : (resources.disk_mb / diskLimitMb) * 100 },
-    { icon: <Icons.CloudDown className="h-5 w-5" />, label: 'Network (In)', value: isOffline ? '—' : `${resources.network_rx_mb} MiB` },
-    { icon: <Icons.CloudUp className="h-5 w-5" />, label: 'Network (Out)', value: isOffline ? '—' : `${resources.network_tx_mb} MiB` },
-  ] : [], [resources, address, server.node_fqdn, server.cpu, memLimitMb, diskLimitMb, isOffline]);
 
   return (
     <div>
