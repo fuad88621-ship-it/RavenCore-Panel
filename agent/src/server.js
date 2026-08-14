@@ -52,7 +52,7 @@ app.post('/servers', async (req, res) => {
 
 app.delete('/servers/:uuid', async (req, res) => {
   try {
-    res.json(await docker.removeBot(req.params.uuid));
+    res.json(await docker.removeBot(req.params.uuid, !!(req.body && req.body.keep_files)));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -125,6 +125,38 @@ app.post('/servers/:uuid/files/archive', async (req, res) => {
 app.post('/servers/:uuid/files/extract', async (req, res) => {
   try {
     res.json(await docker.extractArchive(req.params.uuid, req.body.path));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Transfer this server's files to another agent (panel-orchestrated).
+// `url` + `token` are the destination agent's import endpoint and daemon token.
+app.post('/servers/:uuid/transfer', async (req, res) => {
+  try {
+    const { url, token } = req.body || {};
+    if (!url || !token) return res.status(400).json({ error: 'url and token are required' });
+    res.json(await docker.transferOut(req.params.uuid, url, token));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Receive a tar.gz stream of a transferred server's files.
+app.post('/servers/:uuid/files/import', express.raw({ type: 'application/octet-stream', limit: '2gb' }), async (req, res) => {
+  try {
+    if (!req.body || !Buffer.isBuffer(req.body) || req.body.length === 0) {
+      return res.status(400).json({ error: 'no data received' });
+    }
+    const dir = await docker.ensureBotDir(req.params.uuid);
+    const tmp = path.join(dir, `.import-${Date.now()}.tar.gz`);
+    await fs.promises.writeFile(tmp, req.body);
+    try {
+      await docker.importArchive(req.params.uuid, tmp);
+    } finally {
+      await fs.promises.rm(tmp, { force: true });
+    }
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
