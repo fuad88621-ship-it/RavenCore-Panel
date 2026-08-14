@@ -266,6 +266,7 @@ export default function Nodes() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [openSections, setOpenSections] = useState({ general: true, connection: true, resources: true, security: true });
+  const [health, setHealth] = useState([]);
   const confirm = useConfirm();
 
   function toggleSection(k) {
@@ -295,7 +296,18 @@ export default function Nodes() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  async function loadHealth() {
+    try {
+      const d = await api.admin.nodeHealth();
+      setHealth(d.nodes || []);
+    } catch {}
+  }
+
+  useEffect(() => { load(); loadHealth(); }, []);
+  useEffect(() => {
+    const t = setInterval(loadHealth, 15000);
+    return () => clearInterval(t);
+  }, []);
 
   async function create(e) {
     e.preventDefault();
