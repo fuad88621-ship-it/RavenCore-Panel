@@ -106,6 +106,17 @@ else
 fi
 ok "Using: ${COMPOSE}"
 
+# ── Install prerequisites (curl, python3, dnsutils for dig) ────────
+# Fresh VPSes often lack python3/dig — the Cloudflare auto-DNS and the
+# installer itself need them.
+info "Checking prerequisites…"
+if ! command -v curl >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1 || ! command -v dig >/dev/null 2>&1; then
+  apt-get update -qq >/dev/null 2>&1 || true
+  apt-get install -y -qq curl python3 dnsutils >/dev/null 2>&1 \
+    || warn "Could not install all prerequisites (curl/python3/dig) — Cloudflare auto-DNS may not work."
+fi
+ok "Prerequisites ready"
+
 # ── Fix container DNS ──────────────────────────────────────────────
 # Same fix as install.sh: pin the Docker daemon to real upstream resolvers
 # so containers don't inherit a broken 127.0.0.53 systemd-resolved stub.
