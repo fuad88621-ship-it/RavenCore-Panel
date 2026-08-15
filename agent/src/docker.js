@@ -720,6 +720,70 @@ export async function getSftpInfo(identifier) {
 
 const hostCpuSample = { idle: 0, total: 0 };
 
+// The host's primary IPv4 address (public IP on a VPS). Prefers an external
+// IP service because the primary interface may be a private NAT address on
+// some VPSes (e.g. 10.x behind QEMU/KVM).
+export async function getHostIp() {
+  try {
+    const res = await fetch('https://api.ipify.org', { signal: AbortSignal.timeout(5000) });
+    if (res.ok) {
+      const ip = (await res.text()).trim();
+      if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return ip;
+    }
+  } catch {}
+  try {
+    const { stdout } = await exec('hostname', ['-I']);
+    const ip = stdout.trim().split(/\s+/).find((x) => /^\d+\.\d+\.\d+\.\d+$/.test(x));
+    return ip || null;
+  } catch {
+    return null;
+  }
+}
+
+// TCP proxy container: forwards 0.0.0.0:<port> -> <target> (e.g. a remote
+// node's game port). Used when a remote node's FQDN points at the panel host
+// so players can reach the game server through the panel's IP.
+export async function createProxy(port, target) {
+  const name = `raven-proxy-${port}`;
+  try {
+    const existing = docker.getContainer(name);
+    await existing.remove({ force: true });
+  } catch {}
+  await pullImage('alpine/socat');
+  const container = await docker.createContainer({
+    Image: 'alpine/socat',
+    name,
+    HostConfig: {
+      PortBindings: { [`${port}/tcp`]: [{ HostIp: '0.0.0.0', HostPort: String(port) }] },
+      RestartPolicy: { Name: 'unless-stopped' },
+    },
+    Cmd: ['TCP-LISTEN:' + port + ',fork,reuseaddr', 'TCP:' + target],
+    Labels: { 'raven.proxy': 'true' },
+  });
+  await container.start();
+  return { ok: true, name };
+}
+
+export async function removeProxy(port) {
+  try {
+    const c = docker.getContainer(`raven-proxy-${port}`);
+    await c.remove({ force: true });
+  } catch {}
+  return { ok: true };
+}
+
+export async function listProxies() {
+  const containers = await docker.listContainers({ all: true });
+  const proxies = [];
+  for (const c of containers) {
+    if (c.Labels && c.Labels['raven.proxy'] === 'true') {
+      const port = (c.Names[0] || '').replace(/^\/raven-proxy-/, '');
+      proxies.push({ name: c.Names[0], port: parseInt(port, 10) || null, state: c.State });
+    }
+  }
+  return { proxies };
+}
+
 // Live host-level metrics: CPU, RAM, disk, load, uptime, container counts.
 // Used by the panel's node health dashboard.
 export async function getHostStats() {
