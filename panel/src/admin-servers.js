@@ -790,6 +790,9 @@ export async function adminServerRoutes(fastify) {
     agentRequestFor(server.uuid, `/servers/${server.uuid}/reinstall`, 'POST', {
       image: server.egg_image,
       install_command: server.egg_skip_install ? null : server.egg_install,
+      // Send the current env from the DB so the install uses the user's
+      // configured variables even if the agent's spec is stale.
+      env: server.env,
     }).then(async () => {
       await q(`UPDATE servers SET status = 'offline' WHERE id = $1`, [server.id]);
     }).catch(async (e) => {
