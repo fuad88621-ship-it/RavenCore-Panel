@@ -182,28 +182,8 @@ function ConsoleTab({ server, resetKey }) {
       if (termRef.current) resizeObserver.observe(termRef.current);
 
       if (installing) {
-        term.writeln('\x1b[33m● Server is installing. Install output will appear below.\x1b[0m');
+        term.writeln('\x1b[33m● Server is installing — showing live install output.\x1b[0m');
         term.writeln('');
-        let lastLog = '';
-        let busy = false;
-        const poll = async () => {
-          if (busy || disposed) return;
-          busy = true;
-          try {
-            const d = await api.installLog(server.id);
-            if (d.log && d.log !== lastLog) {
-              const newLines = d.log.slice(lastLog.length);
-              term.write(newLines);
-              lastLog = d.log;
-            }
-          } catch (e) {
-            // ignore poll errors
-          } finally {
-            busy = false;
-          }
-        };
-        pollId = setInterval(poll, 2000);
-        return;
       }
 
       term.writeln('\x1b[90mConnecting to console…\x1b[0m');
