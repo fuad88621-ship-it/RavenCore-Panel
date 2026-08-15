@@ -185,10 +185,21 @@ export async function adminServerRoutes(fastify) {
         claimed++;
       }
     }
-    // Fill remaining allocation slots from free ports on the node
+    // Fill remaining allocation slots from free ports on the node. Exclude
+    // ports used by servers on other nodes sharing the same host (same fqdn)
+    // so two nodes on one VPS can't collide on the physical port.
     if (claimed < allocCount) {
       const free = await q(
-        `SELECT * FROM allocations WHERE node_id = $1 AND server_id IS NULL ORDER BY port LIMIT $2`,
+        `SELECT a.* FROM allocations a
+         WHERE a.node_id = $1 AND a.server_id IS NULL
+         AND a.port NOT IN (
+           SELECT a2.port FROM allocations a2
+           JOIN servers s ON s.id = a2.server_id
+           JOIN nodes n ON n.id = a2.node_id
+           WHERE n.fqdn = (SELECT fqdn FROM nodes WHERE id = $1)
+             AND a2.port IS NOT NULL
+         )
+         ORDER BY a.port LIMIT $2`,
         [node.id, allocCount - claimed]
       );
       for (const a of free) {
@@ -332,9 +343,21 @@ export async function adminServerRoutes(fastify) {
       setP('stopping', 5);
       try { await agentRequestFor(server.uuid, `/servers/${server.uuid}/power`, 'POST', { action: 'stop' }); } catch {}
 
-      // 2. Pick a free allocation on the destination node
+      // 2. Pick a free allocation on the destination node. Exclude ports that
+      // are in use by servers on OTHER nodes sharing the same host (same fqdn)
+      // — e.g. two nodes on one VPS with overlapping port ranges would
+      // otherwise collide on the physical port.
       const free = await q1(
-        `SELECT * FROM allocations WHERE node_id = $1 AND server_id IS NULL ORDER BY port LIMIT 1`,
+        `SELECT a.* FROM allocations a
+         WHERE a.node_id = $1 AND a.server_id IS NULL
+         AND a.port NOT IN (
+           SELECT a2.port FROM allocations a2
+           JOIN servers s ON s.id = a2.server_id
+           JOIN nodes n ON n.id = a2.node_id
+           WHERE n.fqdn = (SELECT fqdn FROM nodes WHERE id = $1)
+             AND a2.port IS NOT NULL
+         )
+         ORDER BY a.port LIMIT 1`,
         [dest.id]
       );
       const newPort = free ? free.port : null;
@@ -474,6 +497,26 @@ export async function adminServerRoutes(fastify) {
       return reply.code(400).send({
         error: 'Destination agent is outdated (no transfer support). Update it on the node with: bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh) --update',
       });
+    }
+
+    // The destination must have a free allocation (excluding ports used by
+    // other nodes on the same host) — otherwise the server would end up with
+    // no port after the move.
+    const freeAlloc = await q1(
+      `SELECT a.id FROM allocations a
+       WHERE a.node_id = $1 AND a.server_id IS NULL
+       AND a.port NOT IN (
+         SELECT a2.port FROM allocations a2
+         JOIN servers s ON s.id = a2.server_id
+         JOIN nodes n ON n.id = a2.node_id
+         WHERE n.fqdn = (SELECT fqdn FROM nodes WHERE id = $1)
+           AND a2.port IS NOT NULL
+       )
+       ORDER BY a.port LIMIT 1`,
+      [dest.id]
+    );
+    if (!freeAlloc) {
+      return reply.code(400).send({ error: 'Destination node has no free allocations. Add ports to it first (Admin → Nodes → Allocations).' });
     }
 
     // Start the transfer in the background and return a transfer id to poll.
