@@ -620,6 +620,61 @@ export async function adminServerRoutes(fastify) {
     return { transferId };
   });
 
+  // ── Node cleanup: delete inactive servers ────────────────────────────
+  // "Inactive" = status is offline AND the server's last activity (or its
+  // creation date if it was never used) is older than `days` days.
+  // Preview first (dry run), then confirm with the literal word CLEANUP.
+  async function inactiveServers(nodeId, days) {
+    const d = Math.max(1, Math.min(365, parseInt(days) || 7));
+    return q(
+      `SELECT s.id, s.name, s.identifier, s.status, s.created_at,
+              COALESCE((SELECT MAX(al.created_at) FROM activity_logs al WHERE al.server_id = s.id), s.created_at) AS last_active
+       FROM servers s
+       WHERE s.node_id = $1
+         AND s.status = 'offline'
+         AND COALESCE((SELECT MAX(al.created_at) FROM activity_logs al WHERE al.server_id = s.id), s.created_at)
+             < now() - ($2 || ' days')::interval
+       ORDER BY last_active ASC`,
+      [nodeId, d]
+    );
+  }
+
+  fastify.get('/api/admin/nodes/:id/cleanup-preview', { preHandler: requireAdmin }, async (req, reply) => {
+    const node = await q1(`SELECT * FROM nodes WHERE id = $1`, [req.params.id]);
+    if (!node) return reply.code(404).send({ error: 'Node not found' });
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days) || 7));
+    const servers = await inactiveServers(node.id, days);
+    return { node: { id: node.id, name: node.name }, days, servers };
+  });
+
+  fastify.post('/api/admin/nodes/:id/cleanup', { preHandler: requireAdmin }, async (req, reply) => {
+    const node = await q1(`SELECT * FROM nodes WHERE id = $1`, [req.params.id]);
+    if (!node) return reply.code(404).send({ error: 'Node not found' });
+    const { days, confirm } = req.body || {};
+    if (String(confirm || '').trim() !== 'CLEANUP') {
+      return reply.code(400).send({ error: 'Type CLEANUP to confirm' });
+    }
+    const servers = await inactiveServers(node.id, days);
+    if (servers.length === 0) return { ok: true, deleted: 0 };
+    let deleted = 0;
+    for (const s of servers) {
+      try {
+        await agentRequestFor(s.uuid, `/servers/${s.uuid}`, 'DELETE');
+      } catch (e) {
+        console.error('[admin] cleanup agent delete failed:', e.message);
+      }
+      const dbs = await q(`SELECT * FROM server_databases WHERE server_id = $1`, [s.id]);
+      for (const db of dbs) {
+        try { await deleteDatabase(db); } catch (e) { console.error('[admin] cleanup db drop failed:', e.message); }
+      }
+      await q(`UPDATE allocations SET server_id = NULL WHERE server_id = $1`, [s.id]);
+      await q(`DELETE FROM servers WHERE id = $1`, [s.id]);
+      deleted++;
+    }
+    await logActivity(null, req.user.id, 'node.cleanup', { node: node.name, days, deleted });
+    return { ok: true, deleted };
+  });
+
   // Power control
   fastify.post('/api/admin/servers/:id/power', { preHandler: requireAdmin }, async (req, reply) => {
     const server = await q1(`SELECT * FROM servers WHERE id = $1`, [req.params.id]);
