@@ -30,7 +30,7 @@ app.param('uuid', (req, res, next, uuid) => {
 app.use('/servers', auth);
 
 app.get('/health', (req, res) => {
-  res.json({ online: true, version: '0.2.0' });
+  res.json({ online: true, version: '0.2.0', features: ['transfer'] });
 });
 
 app.get('/host/stats', auth, async (req, res) => {
