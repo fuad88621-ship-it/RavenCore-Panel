@@ -9,6 +9,8 @@
 #    (no args)  - install, or show menu if already installed
 #    --update   - re-download + rebuild the agent (no questions)
 #    --delete   - fully remove the agent (keeps other apps like Pterodactyl)
+#    --uninstall-panel - fully remove the PANEL from this VPS (only if this
+#                        VPS IS the panel — removes panel, DB, bots, everything)
 # ═══════════════════════════════════════════════════════════════════
 
 set -e
@@ -153,10 +155,67 @@ delete_agent() {
   echo ""
 }
 
+# ── Uninstall the whole PANEL from this VPS ──────────────────────
+# Removes the full panel stack (/opt/raven: caddy, postgres, redis,
+# mariadb, panel, agent), its volumes, all server containers and all bot
+# data. Everything else on the VPS is left untouched.
+uninstall_panel() {
+  echo ""
+  echo -e "${C_RED}${C_BOLD}  ╔══════════════════════════════════════════════════════╗"
+  echo -e "  ║  WARNING: this removes the ENTIRE Raven panel from this VPS ║"
+  echo -e "  ║  (panel, agent, database, redis, mariadb, caddy + ALL bots) ║"
+  echo -e "  ╚══════════════════════════════════════════════════════╝${C_RESET}"
+  echo ""
+  read -rp "  Type DELETE to confirm: " CONFIRM
+  [ "$CONFIRM" = "DELETE" ] || fail "Aborted."
+
+  PANEL_DIR="/opt/raven"
+  if [ ! -f "$PANEL_DIR/docker-compose.yml" ]; then
+    fail "No panel found at ${PANEL_DIR}. This VPS is a node, not the panel — use --delete to remove the agent instead."
+  fi
+
+  # 1. Stop + remove the panel stack (containers, networks AND volumes)
+  info "Stopping the panel stack…"
+  (cd "$PANEL_DIR" && docker compose down -v 2>/dev/null || true)
+
+  # 2. Remove ALL Raven server containers (labeled raven.uuid)
+  info "Removing Raven server containers…"
+  RAVEN_CONTAINERS="$(docker ps -aq --filter 'label=raven.uuid' 2>/dev/null || true)"
+  if [ -n "$RAVEN_CONTAINERS" ]; then
+    echo "$RAVEN_CONTAINERS" | xargs -r docker rm -f >/dev/null 2>&1 || true
+    ok "Removed $(echo "$RAVEN_CONTAINERS" | wc -l) server container(s)"
+  else
+    ok "No server containers found"
+  fi
+
+  # 3. Remove Raven networks (raven-*)
+  info "Removing Raven networks…"
+  RAVEN_NETS="$(docker network ls -q --filter 'name=raven-' 2>/dev/null || true)"
+  if [ -n "$RAVEN_NETS" ]; then
+    echo "$RAVEN_NETS" | xargs -r docker network rm >/dev/null 2>&1 || true
+    ok "Removed Raven network(s)"
+  else
+    ok "No Raven networks found"
+  fi
+
+  # 4. Remove panel files + bot data
+  info "Removing panel files and bot data…"
+  rm -rf "$PANEL_DIR" /var/lib/raven 2>/dev/null || true
+
+  echo ""
+  echo -e "${C_GREEN}${C_BOLD}  ──────────────────────────────────────────────"
+  echo -e "   🧹  Raven panel fully removed from this VPS"
+  echo -e "  ──────────────────────────────────────────────${C_RESET}"
+  echo ""
+  echo -e "  All other containers and apps were left untouched."
+  echo ""
+}
+
 # ── Flag dispatch ─────────────────────────────────────────────────
 case "$1" in
   --update) update_agent; exit 0 ;;
   --delete) delete_agent; exit 0 ;;
+  --uninstall-panel) uninstall_panel; exit 0 ;;
 esac
 
 # ── Root check ────────────────────────────────────────────────────
@@ -178,6 +237,7 @@ if [ -f "/opt/raven-agent/docker-compose.yml" ]; then
   echo -e "  ${C_BOLD}1)${C_RESET} Update the agent (re-download + rebuild)"
   echo -e "  ${C_BOLD}2)${C_RESET} Delete the agent (remove everything RavenCore, keeps other apps)"
   echo -e "  ${C_BOLD}3)${C_RESET} Reinstall (connect to the panel again)"
+  echo -e "  ${C_BOLD}4)${C_RESET} Uninstall the panel (only if this VPS IS the panel — removes everything)"
   echo -e "  ${C_BOLD}q)${C_RESET} Quit"
   echo ""
   read -rp "  Choose: " CHOICE
@@ -185,6 +245,7 @@ if [ -f "/opt/raven-agent/docker-compose.yml" ]; then
     1) update_agent; exit 0 ;;
     2) delete_agent; exit 0 ;;
     3) echo "" ;;
+    4) uninstall_panel; exit 0 ;;
     *) exit 0 ;;
   esac
 fi
