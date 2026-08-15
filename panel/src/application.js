@@ -1,4 +1,5 @@
 import { q, q1, genUuid, genIdentifier } from './db.js';
+import crypto from 'node:crypto';
 import { requireApiKey, hasPermission } from './api-keys.js';
 import { agentRequest, agentRequestFor } from './agent-client.js';
 import { renderStartup } from './admin-servers.js';
@@ -57,14 +58,15 @@ export async function applicationRoutes(fastify) {
     const finalImage = docker_image || egg.docker_image;
     const uuid = genUuid();
     const identifier = genIdentifier();
+    const sftpPassword = crypto.randomBytes(12).toString('hex');
 
     const server = await q1(
       `INSERT INTO servers (uuid, identifier, name, description, user_id, node_id, nest_id, egg_id,
-        status, memory_mb, cpu, disk_mb, swap_mb, io, databases, allocations, startup_command, docker_image, env)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'installing',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        status, memory_mb, cpu, disk_mb, swap_mb, io, databases, allocations, startup_command, docker_image, env, sftp_password)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'installing',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        RETURNING *`,
       [uuid, identifier, name, description || '', user.id, node.id, egg.nest_id, egg.id,
-       mem, cpuPct, disk, swap, ioVal, dbCount, allocCount, finalStartup, finalImage, JSON.stringify(mergedEnv)]
+       mem, cpuPct, disk, swap, ioVal, dbCount, allocCount, finalStartup, finalImage, JSON.stringify(mergedEnv), sftpPassword]
     );
 
     agentRequest('/servers', 'POST', {
@@ -72,6 +74,7 @@ export async function applicationRoutes(fastify) {
       install_command: egg.skip_install ? null : egg.default_install_command,
       memory_mb: mem, disk_mb: disk, cpu: cpuPct, swap_mb: swap, io: ioVal, env: mergedEnv, mounts: [],
       mount_target: egg.mount_target || '/home/container',
+      sftp_password: sftpPassword,
     }, { node }).then(async (res) => {
       await q(`UPDATE servers SET container_id = $1, status = 'offline' WHERE id = $2`, [res.container_id, server.id]);
     }).catch(async (e) => {
@@ -87,6 +90,11 @@ export async function applicationRoutes(fastify) {
     const server = await q1(`SELECT * FROM servers WHERE id = $1`, [req.params.id]);
     if (!server) return reply.code(404).send({ error: 'Server not found' });
     try { await agentRequestFor(server.uuid, `/servers/${server.uuid}`, 'DELETE'); } catch {}
+    // Drop the server's MariaDB databases (rows cascade, MySQL dbs don't).
+    const dbs = await q(`SELECT * FROM server_databases WHERE server_id = $1`, [server.id]);
+    for (const db of dbs) {
+      try { const { deleteDatabase } = await import('./admin-databases.js'); await deleteDatabase(db); } catch (e) { console.error('[api] db cleanup failed:', e.message); }
+    }
     await q(`UPDATE allocations SET server_id = NULL WHERE server_id = $1`, [server.id]);
     await q(`DELETE FROM servers WHERE id = $1`, [server.id]);
     return { ok: true };
