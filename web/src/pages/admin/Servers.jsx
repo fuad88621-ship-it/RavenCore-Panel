@@ -520,6 +520,91 @@ function TransferModal({ server, count = 1, nodes, onTransfer, onCancel, progres
   );
 }
 
+// ── Edit server resource limits (RAM / CPU / disk / swap / IO) ──
+function EditLimitsModal({ server, onClose, onDone }) {
+  const [form, setForm] = useState({
+    memory_mb: server.memory_mb,
+    cpu: server.cpu,
+    cpu_pinning: server.cpu_pinning || '',
+    disk_mb: server.disk_mb,
+    swap_mb: server.swap_mb,
+    io: server.io,
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const toast = useToast();
+
+  async function save(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await api.admin.updateServer(server.id, form);
+      toast.push('Limits updated — container rebuilt');
+      onDone();
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}
+    >
+      <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="font-semibold text-white">Edit limits — {server.name}</h3>
+          <button onClick={onClose} disabled={busy} className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-white" aria-label="Close">
+            <Icons.Close className="h-4 w-4" />
+          </button>
+        </div>
+        <form onSubmit={save} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Memory (MiB)</label>
+              <NumberInput min={0} value={form.memory_mb} onChange={(n) => setForm({ ...form, memory_mb: n })} />
+              <p className="mt-1 text-[11px] text-zinc-500">0 = unlimited</p>
+            </div>
+            <div>
+              <label className="label">CPU Limit (%)</label>
+              <NumberInput min={0} value={form.cpu} onChange={(n) => setForm({ ...form, cpu: n })} />
+              <p className="mt-1 text-[11px] text-zinc-500">100 = 1 thread</p>
+            </div>
+            <div>
+              <label className="label">Disk (MiB)</label>
+              <NumberInput min={0} value={form.disk_mb} onChange={(n) => setForm({ ...form, disk_mb: n })} />
+              <p className="mt-1 text-[11px] text-zinc-500">0 = unlimited</p>
+            </div>
+            <div>
+              <label className="label">Swap (MiB)</label>
+              <NumberInput value={form.swap_mb} onChange={(n) => setForm({ ...form, swap_mb: n })} />
+              <p className="mt-1 text-[11px] text-zinc-500">-1 = unlimited, 0 = off</p>
+            </div>
+            <div>
+              <label className="label">IO Weight</label>
+              <NumberInput min={100} max={1000} value={form.io} onChange={(n) => setForm({ ...form, io: n })} />
+              <p className="mt-1 text-[11px] text-zinc-500">100-1000</p>
+            </div>
+            <div>
+              <label className="label">CPU Pinning</label>
+              <input className="input font-mono" value={form.cpu_pinning} onChange={(e) => setForm({ ...form, cpu_pinning: e.target.value })} placeholder="0, 0-1,3" />
+              <p className="mt-1 text-[11px] text-zinc-500">blank = all cores</p>
+            </div>
+          </div>
+          {error && <p className="text-sm text-red-400">{error}</p>}
+          <p className="text-xs text-zinc-500">Saving rebuilds the container so the new limits apply. The server restarts.</p>
+          <div className="flex gap-2">
+            <button type="button" className="btn-ghost flex-1" onClick={onClose} disabled={busy}>Cancel</button>
+            <button className="btn-primary flex-1" disabled={busy}>{busy ? 'Saving…' : 'Save limits'}</button>
+          </div>
+        </form>
+      </Card>
+    </div>
+  );
+}
+
 export default function Servers() {
   const { user } = useAuth();
   const [servers, setServers] = useState([]);
@@ -528,6 +613,7 @@ export default function Servers() {
   const [showCreate, setShowCreate] = useState(false);
   const [assigning, setAssigning] = useState(null);
   const [transferring, setTransferring] = useState(null);
+  const [editing, setEditing] = useState(null);
   const [nodes, setNodes] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [progress, setProgress] = useState(null);
@@ -718,6 +804,14 @@ export default function Servers() {
         />
       )}
 
+      {editing && (
+        <EditLimitsModal
+          server={editing}
+          onClose={() => setEditing(null)}
+          onDone={() => { setEditing(null); load(search); }}
+        />
+      )}
+
       {showCreate && (
         <div className="mb-6">
           <CreateServerForm onCreated={() => { setShowCreate(false); load(); }} />
@@ -819,6 +913,7 @@ export default function Servers() {
                     <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => power(s.id, 'start')} disabled={s.status === 'installing'} aria-label={`Start server ${s.name}`}>Start</button>
                   )}
                   <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => toggleSuspend(s)} aria-label={`${s.status === 'suspended' ? 'Unsuspend' : 'Suspend'} server ${s.name}`}>{s.status === 'suspended' ? 'Unsuspend' : 'Suspend'}</button>
+                  <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => setEditing(s)} aria-label={`Edit limits for ${s.name}`}>Edit</button>
                   <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => openTransfer(s)} aria-label={`Transfer server ${s.name}`}>Transfer</button>
                   <button className="btn-danger !px-2 !py-1 text-xs" onClick={() => remove(s)} aria-label={`Delete server ${s.name}`}>Delete</button>
                 </td>
