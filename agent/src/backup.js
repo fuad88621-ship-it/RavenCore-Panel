@@ -1,9 +1,9 @@
-import { execSync, exec } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
+import Docker from 'dockerode';
 
-const execAsync = promisify(exec);
+const docker = new Docker();
 
 const INSTALL_DIR = process.env.INSTALL_DIR || '/opt/raven';
 const BACKUPS_DIR = path.join(INSTALL_DIR, 'backups');
@@ -30,12 +30,26 @@ function readEnv() {
 
 function containerName(service) {
   // Docker Compose default naming: <project>_<service>_<number>
-  // Try the most common name first.
   return `${COMPOSE_PROJECT}-${service}-1`;
 }
 
-function execDocker(args, opts = {}) {
-  return execSync(`docker ${args}`, { encoding: 'utf8', stdio: 'pipe', shell: true, ...opts });
+// Run a command inside a container and return its stdout (uses the Docker
+// API — the agent image has no docker CLI).
+async function execInContainer(containerName, cmd) {
+  const container = docker.getContainer(containerName);
+  const exec = await container.exec({
+    Cmd: ['sh', '-c', cmd],
+    AttachStdout: true,
+    AttachStderr: true,
+  });
+  const stream = await exec.start();
+  let output = '';
+  await new Promise((resolve, reject) => {
+    stream.on('data', (chunk) => { output += chunk.toString(); });
+    stream.on('end', resolve);
+    stream.on('error', reject);
+  });
+  return output;
 }
 
 export async function createBackup() {
@@ -50,13 +64,15 @@ export async function createBackup() {
   fs.mkdirSync(workDir, { recursive: true });
 
   try {
-    // 1. Dump Postgres
-    execDocker(`exec ${containerName('postgres')} pg_dump -U raven raven > ${path.join(workDir, 'postgres.sql')}`);
+    // 1. Dump Postgres (capture stdout via the Docker API)
+    const pgSql = await execInContainer(containerName('postgres'), 'pg_dump -U raven raven');
+    fs.writeFileSync(path.join(workDir, 'postgres.sql'), pgSql);
 
     // 2. Dump MariaDB — use mariadb-dump (the mariadb:11 image has no
     // mysqldump binary) as root (the raven user lacks --all-databases
     // privileges on the mysql system tables).
-    execDocker(`exec ${containerName('mariadb')} mariadb-dump -u root -p'${dbPassword}' --all-databases > ${path.join(workDir, 'mariadb.sql')}`);
+    const mySql = await execInContainer(containerName('mariadb'), `mariadb-dump -u root -p'${dbPassword}' --all-databases`);
+    fs.writeFileSync(path.join(workDir, 'mariadb.sql'), mySql);
 
     // 3. Copy config files
     for (const f of ['.env', 'config.yml', 'Caddyfile', 'docker-compose.yml']) {
