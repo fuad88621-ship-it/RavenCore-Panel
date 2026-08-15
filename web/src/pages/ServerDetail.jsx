@@ -1889,7 +1889,7 @@ export default function ServerDetail() {
     const ab = new AbortController();
     let ignore = false;
     api.server(id, { signal: ab.signal })
-      .then((d) => { if (!ignore) setServer(d.server); })
+      .then((d) => { if (!ignore) { setServer(d.server); setPerms(d.perms); } })
       .catch((e) => { if (!ignore && e.name !== 'AbortError') setError(e.message); });
     return () => { ignore = true; ab.abort(); };
   }, [id]);
@@ -1933,19 +1933,25 @@ export default function ServerDetail() {
   // Plugins (Modrinth marketplace) only makes sense for Minecraft eggs.
   const isMinecraft = /minecraft/i.test(server?.egg_name || '');
 
-  const tabs = useMemo(() => [
-    { id: 'console', label: 'Console', icon: <Icons.Terminal className="h-4 w-4" /> },
-    { id: 'files', label: 'Files', icon: <Icons.Folder className="h-4 w-4" /> },
-    { id: 'databases', label: 'Databases', icon: <Icons.Database className="h-4 w-4" /> },
-    { id: 'schedules', label: 'Schedules', icon: <Icons.Clock className="h-4 w-4" /> },
-    { id: 'users', label: 'Users', icon: <Icons.Users className="h-4 w-4" /> },
-    { id: 'backups', label: 'Backups', icon: <Icons.Save className="h-4 w-4" /> },
-    { id: 'network', label: 'Network', icon: <Icons.Node className="h-4 w-4" /> },
-    ...(isMinecraft ? [{ id: 'plugins', label: 'Plugins', icon: <Icons.Box className="h-4 w-4" /> }] : []),
-    { id: 'startup', label: 'Startup', icon: <Icons.Play className="h-4 w-4" /> },
-    { id: 'activity', label: 'Activity', icon: <Icons.Clock className="h-4 w-4" /> },
-    { id: 'settings', label: 'Settings', icon: <Icons.Gear className="h-4 w-4" /> },
-  ], [isMinecraft]);
+  // Subuser permission gating: perms is null for owner/admin (all tabs),
+  // an array of granted permissions for subusers.
+  const tabs = useMemo(() => {
+    const can = (p) => !perms || perms.includes(p);
+    const isOwner = !perms;
+    return [
+      { id: 'console', label: 'Console', icon: <Icons.Terminal className="h-4 w-4" /> },
+      ...(can('files') ? [{ id: 'files', label: 'Files', icon: <Icons.Folder className="h-4 w-4" /> }] : []),
+      ...(can('databases') ? [{ id: 'databases', label: 'Databases', icon: <Icons.Database className="h-4 w-4" /> }] : []),
+      ...(can('schedules') ? [{ id: 'schedules', label: 'Schedules', icon: <Icons.Clock className="h-4 w-4" /> }] : []),
+      ...(isOwner ? [{ id: 'users', label: 'Users', icon: <Icons.Users className="h-4 w-4" /> }] : []),
+      ...(can('backups') ? [{ id: 'backups', label: 'Backups', icon: <Icons.Save className="h-4 w-4" /> }] : []),
+      ...(can('network') ? [{ id: 'network', label: 'Network', icon: <Icons.Node className="h-4 w-4" /> }] : []),
+      ...(isMinecraft && can('files') ? [{ id: 'plugins', label: 'Plugins', icon: <Icons.Box className="h-4 w-4" /> }] : []),
+      ...(can('startup') ? [{ id: 'startup', label: 'Startup', icon: <Icons.Play className="h-4 w-4" /> }] : []),
+      { id: 'activity', label: 'Activity', icon: <Icons.Clock className="h-4 w-4" /> },
+      ...(can('settings') ? [{ id: 'settings', label: 'Settings', icon: <Icons.Gear className="h-4 w-4" /> }] : []),
+    ];
+  }, [isMinecraft, perms]);
 
   const address = server?.allocation_port
     ? `${(server?.allocation_ip && server.allocation_ip !== '0.0.0.0') ? server.allocation_ip : (server?.node_fqdn || '0.0.0.0')}:${server.allocation_port}`
