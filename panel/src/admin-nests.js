@@ -117,4 +117,57 @@ export async function adminNestRoutes(fastify) {
     await q(`DELETE FROM egg_variables WHERE id = $1`, [req.params.id]);
     return { ok: true };
   });
+
+  // ── Import a Pterodactyl egg (PTDL_v2 JSON) ───────────────────────
+  // Accepts the standard Pterodactyl egg export format (name, docker_images,
+  // startup, scripts.installation.script, variables) and creates/updates the
+  // egg + variables in the selected nest. Works with eggs exported from any
+  // Pterodactyl panel.
+  fastify.post('/api/admin/eggs/import', { preHandler: requireAdmin }, async (req, reply) => {
+    const { nest_id, egg_json } = req.body || {};
+    if (!nest_id || !egg_json) return reply.code(400).send({ error: 'nest_id and egg_json are required' });
+    let egg;
+    try {
+      egg = JSON.parse(egg_json);
+    } catch {
+      return reply.code(400).send({ error: 'Invalid egg JSON — check the file is a valid Pterodactyl egg export' });
+    }
+    if (!egg.name || !egg.startup) {
+      return reply.code(400).send({ error: 'Egg must have a name and a startup command' });
+    }
+    const nest = await q1(`SELECT * FROM nests WHERE id = $1`, [nest_id]);
+    if (!nest) return reply.code(404).send({ error: 'Nest not found' });
+
+    const images = Object.values(egg.docker_images || {});
+    const image = images[0] || 'ghcr.io/parkervcp/yolks:debian';
+    const installScript = egg.scripts?.installation?.script || '';
+    const installContainer = egg.scripts?.installation?.container || 'ghcr.io/parkervcp/yolks:debian';
+
+    const existing = await q1(`SELECT id FROM eggs WHERE name = $1 AND nest_id = $2`, [egg.name, nest.id]);
+    let eggId;
+    if (existing) {
+      await q(
+        `UPDATE eggs SET docker_image=$1, startup_command=$2, default_install_command=$3, description=$4 WHERE id=$5`,
+        [image, egg.startup, installScript, egg.description || '', existing.id]
+      );
+      eggId = existing.id;
+      await q(`DELETE FROM egg_variables WHERE egg_id = $1`, [eggId]);
+    } else {
+      const e = await q1(
+        `INSERT INTO eggs (uuid, nest_id, name, description, docker_image, startup_command, default_install_command, mount_target)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'/home/container') RETURNING id`,
+        [genUuid(), nest.id, egg.name, egg.description || '', image, egg.startup, installScript]
+      );
+      eggId = e.id;
+    }
+
+    for (const v of egg.variables || []) {
+      await q(
+        `INSERT INTO egg_variables (egg_id, name, description, env_variable, default_value, user_viewable, user_editable, rules)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [eggId, v.name, v.description || '', v.env_variable, v.default_value || '', !!v.user_viewable, !!v.user_editable, v.rules || '']
+      );
+    }
+    return reply.code(201).send({ egg: { id: eggId, name: egg.name, updated: !!existing } });
+  });
 }
