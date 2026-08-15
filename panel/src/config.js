@@ -44,7 +44,7 @@ const cfg = {
   },
   node: {
     name: parsed.node?.name || process.env.NODE_NAME || 'Node-01',
-    fqdn: parsed.node?.fqdn || process.env.NODE_FQDN || 'node.ravenshop.store',
+    fqdn: parsed.node?.fqdn || process.env.NODE_FQDN || 'localhost',
     port: parseInt(parsed.node?.port || process.env.NODE_PORT || '8080'),
     memory_mb: parseInt(parsed.node?.memory_mb || process.env.NODE_MEMORY_MB || '7680'),
     disk_mb: parseInt(parsed.node?.disk_mb || process.env.NODE_DISK_MB || '80000'),
