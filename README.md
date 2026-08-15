@@ -79,19 +79,35 @@ The Panel and Agent can live on the same machine, or you can connect remote Agen
 
 ### Quick Install
 
-**Full panel** (web UI + database + local node) — run on a fresh VPS:
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install-panel.sh)
-```
-
-It asks for your panel domain, node domain, admin credentials and node resources, then installs Docker, configures container DNS, generates secrets, builds the stack and creates your admin account automatically.
-
-**Add a node** (a machine that runs server containers) — run on any other VPS:
+**One command for everything** — run on any VPS:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh)
 ```
+
+First run shows a menu:
+
+```
+  1) Install Panel   — full panel on this VPS (caddy, DB, panel, agent)
+  2) Install Agent   — connect this VPS to your panel as a node
+  3) Delete Panel    — remove the panel from this VPS (keeps other apps)
+  4) Delete Agent    — remove the agent from this VPS (keeps other apps)
+  q) Quit
+```
+
+**Install Panel** asks for your panel domain, node domain, admin credentials and node resources, then installs Docker, configures container DNS, generates secrets, builds the stack and creates your admin account automatically.
+
+**Install Agent** asks for your panel URL + API key, then connects this VPS as a node.
+
+### Direct commands (no menu, for scripting)
+
+| Command | What it does |
+|---------|--------------|
+| `install.sh --install-panel` | Install the full panel |
+| `install.sh --install-agent` | Connect this VPS as a node |
+| `install.sh --update` | Re-download + rebuild the agent |
+| `install.sh --delete` | Remove the agent (keeps other apps) |
+| `install.sh --uninstall-panel` | Remove the panel (keeps other apps) |
 
 ### Installer Menu Options
 
