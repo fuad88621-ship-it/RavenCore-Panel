@@ -491,7 +491,7 @@ export function EmptyState({ icon, title, sub, action }) {
 // ── Toasts ───────────────────────────────────────────────────
 export function Toasts({ toasts, onDismiss }) {
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+    <div className="pointer-events-none fixed inset-x-3 bottom-3 z-[100] flex flex-col items-stretch gap-2 sm:inset-x-auto sm:bottom-4 sm:right-4 sm:items-end">
       {toasts.map((t) => (
         <motion.div
           key={t.id}
@@ -499,12 +499,12 @@ export function Toasts({ toasts, onDismiss }) {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, x: 20 }}
           className={cn(
-            'flex min-w-[16rem] items-center gap-3 rounded-xl border px-4 py-3 shadow-2xl backdrop-blur-xl',
-            t.type === 'error' ? 'border-red-500/20 bg-red-500/10 text-red-200' : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200'
+            'pointer-events-auto flex min-w-0 items-center gap-3 rounded-xl border px-4 py-3 shadow-2xl backdrop-blur-xl sm:min-w-[16rem]',
+            t.type === 'error' ? 'border-red-500/30 bg-red-950/90 text-red-100' : 'border-emerald-500/30 bg-emerald-950/90 text-emerald-100'
           )}
         >
           {t.type === 'error' ? <Icons.Exclamation className="h-5 w-5 shrink-0" /> : <Icons.Check className="h-5 w-5 shrink-0" />}
-          <p className="flex-1 text-sm font-medium">{t.message}</p>
+          <p className="flex-1 text-sm font-semibold">{t.message}</p>
           <button onClick={() => onDismiss(t.id)} className="text-current opacity-60 hover:opacity-100">
             <Icons.Close className="h-4 w-4" />
           </button>
