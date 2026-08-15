@@ -53,8 +53,10 @@ export async function createBackup() {
     // 1. Dump Postgres
     execDocker(`exec ${containerName('postgres')} pg_dump -U raven raven > ${path.join(workDir, 'postgres.sql')}`);
 
-    // 2. Dump MariaDB
-    execDocker(`exec ${containerName('mariadb')} mysqldump -u raven -p'${dbPassword}' --all-databases > ${path.join(workDir, 'mariadb.sql')}`);
+    // 2. Dump MariaDB — use mariadb-dump (the mariadb:11 image has no
+    // mysqldump binary) as root (the raven user lacks --all-databases
+    // privileges on the mysql system tables).
+    execDocker(`exec ${containerName('mariadb')} mariadb-dump -u root -p'${dbPassword}' --all-databases > ${path.join(workDir, 'mariadb.sql')}`);
 
     // 3. Copy config files
     for (const f of ['.env', 'config.yml', 'Caddyfile', 'docker-compose.yml']) {
