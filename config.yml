@@ -7,7 +7,7 @@
 app:
   name: Raven Panel
   description: Discord bot hosting panel
-  url: https://panel.ravenshop.store
+  url: ${PANEL_URL}
   timezone: UTC
   locale: en
 
@@ -27,12 +27,12 @@ redis:
 
 # The local node auto-registers on first boot.
 node:
-  name: Node-01
-  fqdn: node.ravenshop.store
+  name: ${NODE_NAME}
+  fqdn: ${NODE_FQDN}
   port: 8080
-  memory_mb: 7680
-  disk_mb: 80000
-  cpu_cores: 4
+  memory_mb: ${NODE_MEMORY_MB}
+  disk_mb: ${NODE_DISK_MB}
+  cpu_cores: ${NODE_CPU_CORES}
   # Percentage of resources that can be over-allocated (0-100)
   memory_overallocate: 0
   disk_overallocate: 0
