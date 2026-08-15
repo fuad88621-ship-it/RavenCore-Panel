@@ -97,6 +97,8 @@ First run shows a menu:
 
 **Install Panel** asks for your panel domain, node domain, admin credentials and node resources, then installs Docker, configures container DNS, generates secrets, builds the stack and creates your admin account automatically.
 
+**Cloudflare auto-DNS (optional):** when asked, say **y** to Cloudflare, paste your **Cloudflare API token** + your domain (e.g. `ravenshop.store`), and the installer automatically creates `panel.<domain>` + `node.<domain>` A records pointing at your VPS, waits for propagation, then installs. No manual DNS work needed. (Manual DNS is still supported — just say **n**.)
+
 **Install Agent** asks for your panel URL + API key, then connects this VPS as a node.
 
 ### Direct commands (no menu, for scripting)
