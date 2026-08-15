@@ -51,10 +51,12 @@ export async function networkRoutes(fastify) {
     } catch (e) {
       console.error('[network] sftp sync failed:', e.message);
     }
-    const node = await q1(`SELECT fqdn FROM nodes WHERE id = $1`, [server.node_id]);
+    const node = await q1(`SELECT fqdn, sftp_port FROM nodes WHERE id = $1`, [server.node_id]);
     return {
       host: node.fqdn,
-      port: 2022,
+      // Use the node's configured SFTP port (install.sh asks for it) — the
+      // old hardcoded 2022 broke nodes with a custom SFTP port.
+      port: node.sftp_port || 2022,
       username: server.identifier,
       password: pw,
     };
