@@ -415,6 +415,40 @@ async function handleConsole(ws, req) {
     });
     console.log(`[agent] ws attached: ${uuid}`);
   } catch (e) {
+    // Distinguish "installing" (no container yet) from "stopped" (container
+    // exists but not running). A stopped server shouldn't show the install log.
+    let stopped = false;
+    try {
+      const c = await docker.findMainContainer(uuid);
+      if (c) {
+        const info = await c.inspect();
+        stopped = !info.State.Running;
+      }
+    } catch {}
+    if (stopped) {
+      if (ws.readyState === ws.OPEN) ws.send('\x1b[33m● Server is offline. It will appear here when started.\x1b[0m\n');
+      pollTimer = setInterval(async () => {
+        try {
+          const c = await docker.findMainContainer(uuid);
+          if (c) {
+            const info = await c.inspect();
+            if (info.State.Running) {
+              clearInterval(pollTimer);
+              pollTimer = null;
+              try {
+                stream = await docker.attachConsole(uuid, (chunk) => {
+                  if (ws.readyState === ws.OPEN) ws.send(chunk.toString('utf8'));
+                }, () => {
+                  if (ws.readyState === ws.OPEN) ws.close(1000, 'container stopped');
+                });
+                console.log(`[agent] ws switched to live console: ${uuid}`);
+              } catch {}
+            }
+          }
+        } catch {}
+      }, 2000);
+      return;
+    }
     // Main container not running yet (e.g. installing) — stream the install
     // log instead, then switch to the live console once the container starts.
     console.log(`[agent] ws attach failed (${e.message}) — streaming install log`);
