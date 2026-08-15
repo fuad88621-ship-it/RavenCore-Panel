@@ -283,6 +283,14 @@ async function seedDefaults() {
     nestId = n.id;
   }
 
+  // Minecraft eggs get their own nest.
+  const mcNest = await q1(`SELECT id FROM nests WHERE name = 'Minecraft'`);
+  let mcNestId = mcNest?.id;
+  if (!mcNestId) {
+    const n = await q1(`INSERT INTO nests (uuid, name, description) VALUES ($1, 'Minecraft', 'Minecraft server eggs') RETURNING id`, [genUuid()]);
+    mcNestId = n.id;
+  }
+
   // Auto-import every egg file in panel/eggs/ — no hardcoded list.
   // Drop a new .json in that folder and restart the panel to add an egg.
   const { readdirSync } = await import('fs');
@@ -292,7 +300,9 @@ async function seedDefaults() {
   const eggsDir = pathMod.join(__dirname, '..', 'eggs');
   const eggFiles = readdirSync(eggsDir).filter((f) => f.endsWith('.json'));
   for (const file of eggFiles) {
-    await importEgg(pathMod.basename(file, '.json'), nestId);
+    const base = pathMod.basename(file, '.json');
+    const isMc = ['minecraft', 'vanilla'].includes(base);
+    await importEgg(base, isMc ? mcNestId : nestId);
   }
 
   // Seed the local node from config.yml
