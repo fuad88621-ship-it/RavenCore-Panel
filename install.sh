@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════
-#  RavenCore Panel — Node Installer
-#  Run this on a NEW VPS to connect it to your panel as a node.
+#  RavenCore — UNIFIED INSTALLER
+#  One command for everything: install the panel, connect a node,
+#  or remove either.
 #
 #    bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh)
 #
-#  Commands:
-#    (no args)  - install, or show menu if already installed
-#    --update   - re-download + rebuild the agent (no questions)
-#    --delete   - fully remove the agent (keeps other apps like Pterodactyl)
-#    --uninstall-panel - fully remove the PANEL from this VPS (only if this
-#                        VPS IS the panel — removes panel, DB, bots, everything)
+#  First run shows a menu:
+#    1) Install Panel   (full panel on this VPS)
+#    2) Install Agent   (connect this VPS to your panel as a node)
+#    3) Delete Panel    (remove the panel from this VPS)
+#    4) Delete Agent    (remove the agent from this VPS)
+#
+#  Commands (no menu, for scripting):
+#    --install-panel   - install the full panel
+#    --install-agent   - install/connect an agent node
+#    --update          - re-download + rebuild the agent (no questions)
+#    --delete          - fully remove the agent (keeps other apps like Pterodactyl)
+#    --uninstall-panel - fully remove the PANEL from this VPS
 # ═══════════════════════════════════════════════════════════════════
 
 set -e
@@ -211,24 +218,30 @@ uninstall_panel() {
   echo ""
 }
 
-# ── Flag dispatch ─────────────────────────────────────────────────
-case "$1" in
-  --update) update_agent; exit 0 ;;
-  --delete) delete_agent; exit 0 ;;
-  --uninstall-panel) uninstall_panel; exit 0 ;;
-esac
+# ── Install the full panel (downloads + runs install-panel.sh) ────
+install_panel() {
+  if [ -f "/opt/raven/docker-compose.yml" ]; then
+    echo -e "  ${C_CYAN}A panel already exists at /opt/raven.${C_RESET}"
+    read -rp "  Update it? (git pull + rebuild, keeps your .env and data) [y/N]: " UPD
+    if [ "$UPD" = "y" ] || [ "$UPD" = "Y" ]; then
+      cd /opt/raven
+      cp Caddyfile /tmp/raven-caddyfile.bak 2>/dev/null || true
+      git checkout -- Caddyfile 2>/dev/null || true
+      git pull --ff-only 2>/dev/null || warn "git pull failed — continuing with existing source"
+      cp /tmp/raven-caddyfile.bak Caddyfile 2>/dev/null || true
+      COMPOSE="docker compose"; docker compose version >/dev/null 2>&1 || COMPOSE="docker-compose"
+      $COMPOSE up -d --build
+      ok "Panel updated."
+      exit 0
+    fi
+    exit 0
+  fi
+  info "Downloading the panel installer…"
+  bash <(curl -fsSL "https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install-panel.sh")
+}
 
-# ── Root check ────────────────────────────────────────────────────
-if [ "$(id -u)" -ne 0 ]; then
-  fail "Please run this script as root:  sudo bash <(curl -fsSL ...)"
-fi
-
-echo ""
-echo -e "${C_BOLD}${C_CYAN}  ╔══════════════════════════════════════════════╗"
-echo -e "  ║     RavenCore Panel — Node Installer        ║"
-echo -e "  ║     Connect this VPS to your panel         ║"
-echo -e "  ╚══════════════════════════════════════════════╝${C_RESET}"
-echo ""
+# ── Install / connect an agent node ────────────────────────────────
+install_agent() {
 
 # ── If the agent is already installed, offer a menu ──────────────
 if [ -f "/opt/raven-agent/docker-compose.yml" ]; then
@@ -508,3 +521,43 @@ echo -e "   Logs:    cd /opt/raven-agent && ${COMPOSE} logs -f agent"
 echo -e "   Restart: cd /opt/raven-agent && ${COMPOSE} restart agent"
 echo -e "   Remove:  cd /opt/raven-agent && ${COMPOSE} down"
 echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════
+#  Entry point: flag dispatch → root check → main menu
+# ═══════════════════════════════════════════════════════════════════
+case "$1" in
+  --update) update_agent; exit 0 ;;
+  --delete) delete_agent; exit 0 ;;
+  --uninstall-panel) uninstall_panel; exit 0 ;;
+  --install-panel) install_panel; exit 0 ;;
+  --install-agent) install_agent; exit 0 ;;
+esac
+
+# ── Root check ────────────────────────────────────────────────────
+if [ "$(id -u)" -ne 0 ]; then
+  fail "Please run this script as root:  sudo bash <(curl -fsSL ...)"
+fi
+
+# ── Main menu (first run) ─────────────────────────────────────────
+echo ""
+echo -e "${C_BOLD}${C_CYAN}  ╔══════════════════════════════════════════════╗"
+echo -e "  ║        RavenCore — Unified Installer          ║"
+echo -e "  ╚══════════════════════════════════════════════╝${C_RESET}"
+echo ""
+echo -e "  ${C_BOLD}What do you want to do?${C_RESET}"
+echo ""
+echo -e "  ${C_BOLD}1)${C_RESET} Install Panel   — full panel on this VPS (caddy, DB, panel, agent)"
+echo -e "  ${C_BOLD}2)${C_RESET} Install Agent   — connect this VPS to your panel as a node"
+echo -e "  ${C_BOLD}3)${C_RESET} Delete Panel    — remove the panel from this VPS (keeps other apps)"
+echo -e "  ${C_BOLD}4)${C_RESET} Delete Agent    — remove the agent from this VPS (keeps other apps)"
+echo -e "  ${C_BOLD}q)${C_RESET} Quit"
+echo ""
+read -rp "  Choose: " CHOICE
+case "$CHOICE" in
+  1) install_panel; exit 0 ;;
+  2) install_agent; exit 0 ;;
+  3) uninstall_panel; exit 0 ;;
+  4) delete_agent; exit 0 ;;
+  *) exit 0 ;;
+esac
