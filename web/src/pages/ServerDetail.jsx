@@ -174,8 +174,12 @@ function ConsoleTab({ server, resetKey }) {
         ws.onclose = () => {
           if (everConnected) {
             setConn(false);
-            term.writeln('\r\n\x1b[31m● Disconnected. Reconnecting…\x1b[0m');
-            scheduleReconnect();
+            if (server?.status === 'running') {
+              term.writeln('\r\n\x1b[31m● Disconnected. Reconnecting…\x1b[0m');
+              scheduleReconnect();
+            } else {
+              term.writeln('\r\n\x1b[33m● Server is offline.\x1b[0m');
+            }
           }
           // If we never connected, onerror already switched to install-log polling.
         };
