@@ -23,6 +23,58 @@ export function renderStartup(template, env, extras = {}) {
   return (template || '').replace(/\{\{([A-Z0-9_]+)\}\}/g, (m, name) => all[name] ?? m);
 }
 
+// Validate an env value against an egg variable's rules string
+// (e.g. "required|string|max:20" or "required|integer|min:1|max:65535").
+// Returns an error message or null if valid.
+export function validateRules(rules, value) {
+  if (!rules) return null;
+  const parts = String(rules).split('|');
+  for (const part of parts) {
+    const [rule, arg] = part.split(':');
+    switch (rule) {
+      case 'required':
+        if (value === undefined || value === null || value === '') return 'This field is required';
+        break;
+      case 'string':
+        break;
+      case 'integer':
+        if (!/^-?\d+$/.test(String(value))) return 'Must be an integer';
+        break;
+      case 'numeric':
+        if (isNaN(Number(value))) return 'Must be a number';
+        break;
+      case 'min':
+        // Pterodactyl rules use min/max for both numbers and string lengths.
+        if (isNaN(Number(value))) {
+          if (String(value).length < Number(arg)) return `Must be at least ${arg} characters`;
+        } else if (Number(value) < Number(arg)) {
+          return `Must be at least ${arg}`;
+        }
+        break;
+      case 'max':
+        if (isNaN(Number(value))) {
+          if (String(value).length > Number(arg)) return `Must be at most ${arg} characters`;
+        } else if (Number(value) > Number(arg)) {
+          return `Must be at most ${arg}`;
+        }
+        break;
+      case 'min_length':
+        if (String(value).length < Number(arg)) return `Must be at least ${arg} characters`;
+        break;
+      case 'max_length':
+        if (String(value).length > Number(arg)) return `Must be at most ${arg} characters`;
+        break;
+      case 'url':
+        if (!/^https?:\/\//.test(String(value))) return 'Must be a valid URL';
+        break;
+      case 'boolean':
+        if (!['true', 'false', '0', '1'].includes(String(value))) return 'Must be a boolean';
+        break;
+    }
+  }
+  return null;
+}
+
 async function getServerWithDetails(id) {
   return q1(
     `SELECT s.*, u.username AS owner_username, u.email AS owner_email,
@@ -162,6 +214,13 @@ export async function adminServerRoutes(fastify) {
     const mergedEnv = {};
     for (const v of variables) mergedEnv[v.env_variable] = v.default_value;
     for (const [k, val] of Object.entries(env || {})) mergedEnv[k] = val;
+    // Validate provided env values against the egg variable rules.
+    for (const v of variables) {
+      if (env && env[v.env_variable] !== undefined) {
+        const err = validateRules(v.rules, env[v.env_variable]);
+        if (err) return reply.code(400).send({ error: `${v.name}: ${err}` });
+      }
+    }
 
     // Assign default + additional allocations first (need the port for substitutes)
     let defaultPort = null;
