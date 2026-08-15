@@ -1,4 +1,5 @@
 import { q, q1, genUuid } from './db.js';
+import { Readable } from 'node:stream';
 import { requireAuth } from './auth.js';
 import { agentRequest, agentRequestFor } from './agent-client.js';
 
@@ -67,13 +68,18 @@ export async function backupRoutes(fastify) {
     );
     if (!backup) return reply.code(404).send({ error: 'Backup not found' });
     if (!await canManage(req, reply, backup.server_id, 'backups')) return;
-    const url = `${process.env.AGENT_INTERNAL_URL || 'http://agent:8080'}/servers/${backup.server_uuid}/backups/${backup.uuid}/download`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${process.env.AGENT_TOKEN}` } });
-    if (!res.ok) return reply.code(500).send({ error: 'Backup file not found on node' });
-    const buf = Buffer.from(await res.arrayBuffer());
-    reply.header('Content-Type', 'application/gzip');
-    reply.header('Content-Disposition', `attachment; filename="${backup.name}.tar.gz"`);
-    return reply.send(buf);
+    // Route to the node that actually hosts the server — the old code always
+    // hit the LOCAL agent, so backups on remote nodes 404'd.
+    try {
+      const agentRes = await agentRequestFor(backup.server_uuid, `/servers/${backup.server_uuid}/backups/${backup.uuid}/download`, 'GET', undefined, { raw: true });
+      reply.header('Content-Type', 'application/gzip');
+      reply.header('Content-Disposition', `attachment; filename="${backup.name}.tar.gz"`);
+      // fetch() gives a WHATWG ReadableStream — Fastify can't stream that
+      // directly (it would send an empty body). Convert to a Node stream.
+      return Readable.fromWeb(agentRes.body);
+    } catch (e) {
+      return reply.code(500).send({ error: 'Backup file not found on node' });
+    }
   });
 
   fastify.post('/api/client/backups/:id/restore', { preHandler: requireAuth }, async (req, reply) => {
