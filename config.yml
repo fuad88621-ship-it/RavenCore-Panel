@@ -58,7 +58,7 @@ defaults:
   io: 500
   databases: 1
   allocations: 1
-  backups: 0
+  backups: 3
 
 # Database server used for per-server MySQL databases
 # (uses root so it can create databases/users for each server)
