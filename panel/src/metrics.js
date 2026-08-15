@@ -25,7 +25,7 @@ export function stopMetricsSampler() {
 
 async function sampleAll() {
   try {
-    const servers = await q(`SELECT id, uuid, memory_mb, cpu FROM servers`);
+    const servers = await q(`SELECT id, uuid, name, memory_mb, cpu FROM servers`);
     for (const s of servers) {
       try {
         const node = await serverNode(s.uuid);
