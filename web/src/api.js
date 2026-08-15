@@ -39,6 +39,7 @@ export const api = {
   createFolder: (id, path) => req(`/api/client/servers/${id}/files/mkdir`, { method: 'POST', body: JSON.stringify({ path }) }),
   downloadFile: (id, path) => `${window.location.origin}/api/client/servers/${id}/files/download?path=${encodeURIComponent(path)}`,
   resources: (id) => req(`/api/client/servers/${id}/resources`),
+  mcPing: (id) => req(`/api/client/servers/${id}/mc-ping`),
   metrics: (id, hours = 24) => req(`/api/client/servers/${id}/metrics?hours=${hours}`),
   alerts: () => req('/api/client/alerts'),
   alertsRead: () => req('/api/client/alerts/read', { method: 'POST' }),
