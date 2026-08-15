@@ -398,7 +398,16 @@ async function handleConsole(ws, req) {
 
   console.log(`[agent] ws connect: ${uuid}`);
   let stream = null;
+  let installTail = null;
+  let pollTimer = null;
   try {
+    // Only attach to the MAIN server container — never the one-off install
+    // container (it shares the raven.uuid label and its raw multiplexed
+    // stream would show binary garbage).
+    const main = await docker.findMainContainer(uuid);
+    if (!main) throw new Error('container not found');
+    const info = await main.inspect();
+    if (!info.State.Running) throw new Error('container not running');
     stream = await docker.attachConsole(uuid, (chunk) => {
       if (ws.readyState === ws.OPEN) ws.send(chunk.toString('utf8'));
     }, () => {
@@ -406,11 +415,40 @@ async function handleConsole(ws, req) {
     });
     console.log(`[agent] ws attached: ${uuid}`);
   } catch (e) {
-    console.log(`[agent] ws attach failed: ${uuid}: ${e.message}`);
-    // ws.close() reasons must be <= 123 bytes — a long attach error would
-    // throw a RangeError here and crash the whole agent process.
-    try { ws.close(4002, String(e.message).slice(0, 120)); } catch {}
-    return;
+    // Main container not running yet (e.g. installing) — stream the install
+    // log instead, then switch to the live console once the container starts.
+    console.log(`[agent] ws attach failed (${e.message}) — streaming install log`);
+    try {
+      installTail = await docker.streamInstallLog(uuid, (chunk) => {
+        if (ws.readyState === ws.OPEN) ws.send(chunk.toString('utf8'));
+      }, () => {});
+      pollTimer = setInterval(async () => {
+        try {
+          const c = await docker.findMainContainer(uuid);
+          if (c) {
+            const info = await c.inspect();
+            if (info.State.Running) {
+              clearInterval(pollTimer);
+              pollTimer = null;
+              installTail.stop();
+              installTail = null;
+              try {
+                stream = await docker.attachConsole(uuid, (chunk) => {
+                  if (ws.readyState === ws.OPEN) ws.send(chunk.toString('utf8'));
+                }, () => {
+                  if (ws.readyState === ws.OPEN) ws.close(1000, 'container stopped');
+                });
+                console.log(`[agent] ws switched to live console: ${uuid}`);
+              } catch {}
+            }
+          }
+        } catch {}
+      }, 2000);
+    } catch (e2) {
+      console.log(`[agent] no install log either: ${e2.message}`);
+      try { ws.close(4002, 'server not running'); } catch {}
+      return;
+    }
   }
 
   ws.on('message', (data) => {
@@ -419,6 +457,8 @@ async function handleConsole(ws, req) {
 
   ws.on('close', () => {
     console.log(`[agent] ws closed: ${uuid}`);
+    if (pollTimer) clearInterval(pollTimer);
+    try { installTail?.stop(); } catch {}
     try { stream?.end(); } catch {}
   });
 }
