@@ -4,7 +4,7 @@ import { databaseUrl, config } from './config.js';
 
 export const pool = new pg.Pool({
   connectionString: databaseUrl,
-  max: 10,
+  max: 25,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
 });
@@ -180,6 +180,7 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   metadata JSONB NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS idx_activity_logs_server_time ON activity_logs (server_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS server_databases (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
