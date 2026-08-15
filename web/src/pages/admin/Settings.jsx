@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../../api.js';
-import { Card, Icons, SectionHeader, Select } from '../../components/ui.jsx';
+import { Card, Icons, SectionHeader, Select, useToast } from '../../components/ui.jsx';
 
 function formatBytes(bytes) {
   if (bytes === 0) return '0 B';
@@ -32,6 +32,7 @@ export default function Settings() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupError, setBackupError] = useState('');
   const savedTimer = useRef(null);
+  const toast = useToast();
 
   useEffect(() => () => {
     if (savedTimer.current) clearTimeout(savedTimer.current);
@@ -68,6 +69,7 @@ export default function Settings() {
     try {
       await api.admin.updateSettings(settings);
       setSaved(true);
+      toast.push('Settings saved');
       if (savedTimer.current) clearTimeout(savedTimer.current);
       savedTimer.current = setTimeout(() => setSaved(false), 2000);
     } catch (e) {
