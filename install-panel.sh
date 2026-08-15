@@ -63,7 +63,14 @@ cf_get_zone_id() {
 
 cf_create_a_record() {
   local zone_id="$1" name="$2" ip="$3"
-  cf_api POST "/zones/$zone_id/dns_records" "{\"type\":\"A\",\"name\":\"$name\",\"content\":\"$ip\",\"ttl\":1,\"proxied\":false}" | python3 -c "import json,sys; d=json.load(sys.stdin); print('ok' if d.get('success') else 'ERR: '+str(d.get('errors')))" 2>/dev/null
+  # If the record already exists, update it instead of failing on a duplicate.
+  local existing_id
+  existing_id="$(cf_api GET "/zones/$zone_id/dns_records?type=A&name=$name" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['result'][0]['id'] if d.get('result') else '')" 2>/dev/null)"
+  if [ -n "$existing_id" ]; then
+    cf_api PATCH "/zones/$zone_id/dns_records/$existing_id" "{\"type\":\"A\",\"name\":\"$name\",\"content\":\"$ip\",\"ttl\":1,\"proxied\":false}" | python3 -c "import json,sys; d=json.load(sys.stdin); print('ok' if d.get('success') else 'ERR: '+str(d.get('errors')))" 2>/dev/null
+  else
+    cf_api POST "/zones/$zone_id/dns_records" "{\"type\":\"A\",\"name\":\"$name\",\"content\":\"$ip\",\"ttl\":1,\"proxied\":false}" | python3 -c "import json,sys; d=json.load(sys.stdin); print('ok' if d.get('success') else 'ERR: '+str(d.get('errors')))" 2>/dev/null
+  fi
 }
 
 PANEL_DIR="/opt/raven"
