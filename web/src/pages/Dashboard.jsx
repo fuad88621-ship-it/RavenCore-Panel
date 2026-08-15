@@ -96,6 +96,24 @@ function BentoStat({ label, value, suffix, decimals = 0, icon, color, delay = 0 
 const ServerCard = React.memo(function ServerCard({ server }) {
   const status = server.suspended ? 'suspended' : server.status || 'offline';
   const isRunning = status === 'running';
+  const isMc = (server.egg_name || '').toLowerCase().includes('minecraft') || (server.egg_name || '').toLowerCase().includes('vanilla');
+  const [mc, setMc] = useState(null);
+
+  useEffect(() => {
+    if (!isMc) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const d = await api.mcPing(server.id);
+        if (alive) setMc(d);
+      } catch {
+        if (alive) setMc(null);
+      }
+    };
+    tick();
+    const t = setInterval(tick, 15000);
+    return () => { alive = false; clearInterval(t); };
+  }, [server.id, isMc]);
 
   return (
     <Link to={`/servers/${server.id}`}>
@@ -121,6 +139,17 @@ const ServerCard = React.memo(function ServerCard({ server }) {
           <p className="mt-2 text-xs text-zinc-400">
             {server.cpu}% CPU · {fmtMb(server.memory_mb)} RAM · {fmtMb(server.disk_mb || 0)} disk
           </p>
+          {isMc && (
+            <p className="mt-2 flex items-center gap-1.5 text-xs">
+              <span className="text-zinc-500">👥</span>
+              {mc && mc.online ? (
+                <span className="font-semibold text-emerald-400">{mc.players}<span className="text-zinc-500">/{mc.max_players}</span></span>
+              ) : (
+                <span className="text-zinc-600">offline</span>
+              )}
+              {mc && mc.online && mc.version && <span className="ml-1 truncate text-[10px] text-zinc-600">{mc.version}</span>}
+            </p>
+          )}
         </div>
       </SpotlightCard>
     </Link>
