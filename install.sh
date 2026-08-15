@@ -274,6 +274,27 @@ fi
 read -rp "  Node FQDN / IP (players connect here) [${DETECTED_FQDN}]: " NODE_FQDN
 [ -z "$NODE_FQDN" ] && NODE_FQDN="$DETECTED_FQDN"
 
+# HTTPS console: if the user has a domain pointing to this VPS, set up caddy
+# automatically so the browser console works (wss://). Without it, the console
+# falls back to install-log polling and the live console is unavailable.
+USE_HTTPS=""
+if [ -n "$NODE_FQDN" ] && [[ "$NODE_FQDN" != *"."* ]]; then
+  warn "FQDN is an IP — HTTPS console needs a real domain. Skipping."
+elif [[ "$NODE_FQDN" =~ ^[0-9.]+$ ]]; then
+  warn "FQDN is an IP — HTTPS console needs a real domain. Skipping."
+else
+  read -rp "  HTTPS console? (needs ${NODE_FQDN} pointing to this VPS) [y/N]: " USE_HTTPS
+  if [ "$USE_HTTPS" = "y" ] || [ "$USE_HTTPS" = "Y" ]; then
+    USE_HTTPS="$NODE_FQDN"
+    if ss -tln 2>/dev/null | grep -qE ':(80|443) '; then
+      warn "Port 80/443 is already in use — caddy can't bind. Falling back to http."
+      USE_HTTPS=""
+    fi
+  else
+    USE_HTTPS=""
+  fi
+fi
+
 read -rp "  Agent port (default 8080): " AGENT_PORT
 [ -z "$AGENT_PORT" ] && AGENT_PORT=8080
 
@@ -298,10 +319,19 @@ echo ""
 info "Registering node \"${NODE_NAME}\" with ${PANEL_URL}…"
 
 # ── Register the node with the panel ──────────────────────────────
-REGISTER_JSON=$(cat <<EOF
-{"name":"${NODE_NAME}","fqdn":"${NODE_FQDN}","port":${AGENT_PORT},"scheme":"http","memory_mb":${NODE_MEM:-0},"disk_mb":${NODE_DISK:-0},"cpu_cores":${NODE_CPU:-0},"file_directory":"${DATA_DIR}","sftp_port":${SFTP_PORT}}
+if [ -n "$USE_HTTPS" ]; then
+  # Behind caddy (TLS) — the panel talks to the agent over https://fqdn:443
+  # and the browser console uses wss://fqdn (no port).
+  REGISTER_JSON=$(cat <<EOF
+{"name":"${NODE_NAME}","fqdn":"${USE_HTTPS}","port":443,"scheme":"https","behind_proxy":true,"memory_mb":${NODE_MEM:-0},"disk_mb":${NODE_DISK:-0},"cpu_cores":${NODE_CPU:-0},"file_directory":"${DATA_DIR}","sftp_port":${SFTP_PORT}}
 EOF
 )
+else
+  REGISTER_JSON=$(cat <<EOF
+{"name":"${NODE_NAME}","fqdn":"${NODE_FQDN}","port":${AGENT_PORT},"scheme":"http","behind_proxy":false,"memory_mb":${NODE_MEM:-0},"disk_mb":${NODE_DISK:-0},"cpu_cores":${NODE_CPU:-0},"file_directory":"${DATA_DIR}","sftp_port":${SFTP_PORT}}
+EOF
+)
+fi
 
 RESPONSE="$(curl -fsSL --max-time 20 -X POST "${PANEL_URL}/api/admin/nodes/register" \
   -H "Authorization: Bearer ${API_KEY}" \
@@ -438,6 +468,23 @@ if command -v ufw >/dev/null 2>&1; then
   ufw allow "${AGENT_PORT}/tcp" >/dev/null 2>&1 || true
   ufw allow "${SFTP_PORT}/tcp" >/dev/null 2>&1 || true
   ok "Firewall rules added (agent port + SFTP port)"
+fi
+
+# ── HTTPS console (caddy) ────────────────────────────────────────
+if [ -n "$USE_HTTPS" ]; then
+  info "Setting up HTTPS console with caddy (${USE_HTTPS})…"
+  mkdir -p /etc/caddy
+  cat > /etc/caddy/Caddyfile <<EOF
+${USE_HTTPS} {
+	reverse_proxy localhost:${AGENT_PORT}
+}
+EOF
+  docker rm -f raven-caddy >/dev/null 2>&1 || true
+  docker run -d --name raven-caddy --restart unless-stopped --network host \
+    -v caddy_data:/data -v caddy_config:/config \
+    -v /etc/caddy/Caddyfile:/etc/caddy/Caddyfile:ro \
+    caddy:2 >/dev/null 2>&1 || warn "caddy failed to start — check ports 80/443 are free"
+  ok "HTTPS console enabled (https://${USE_HTTPS})"
 fi
 
 echo ""
