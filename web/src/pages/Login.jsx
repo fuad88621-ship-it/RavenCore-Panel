@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../api.js';
-import { useAuth } from '../App.jsx';
+import { useAuth, useSettings } from '../App.jsx';
 import { Icons } from '../components/ui.jsx';
 export default function Login() {
+  const settings = useSettings();
+  const registrationOpen = settings['panel.registration'] !== 'false';
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -57,8 +59,12 @@ export default function Login() {
         </form>
 
         <p className="mt-5 text-center text-sm text-zinc-500">
-          No account?{' '}
-          <Link to="/register" className="font-medium text-violet-400 hover:text-violet-300">Create one</Link>
+          {registrationOpen ? (
+            <>No account?{' '}
+            <Link to="/register" className="font-medium text-violet-400 hover:text-violet-300">Create one</Link></>
+          ) : (
+            'Registration is disabled by the administrator.'
+          )}
         </p>
       </motion.div>
     </div>
