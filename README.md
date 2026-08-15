@@ -97,9 +97,42 @@ First run shows a menu:
 
 **Install Panel** asks for your panel domain, node domain, admin credentials and node resources, then installs Docker, configures container DNS, generates secrets, builds the stack and creates your admin account automatically.
 
-**Cloudflare auto-DNS (optional):** when asked, say **y** to Cloudflare, paste your **Cloudflare API token** + your domain (e.g. `ravenshop.store`), and the installer automatically creates `panel.<domain>` + `node.<domain>` A records pointing at your VPS, waits for propagation, then installs. No manual DNS work needed. (Manual DNS is still supported — just say **n**.)
-
 **Install Agent** asks for your panel URL + API key, then connects this VPS as a node.
+
+### ☁️ Cloudflare auto-DNS (zero manual DNS work)
+
+The installer can create your DNS records automatically — you only need a **Cloudflare API token** and your domain. No touching DNS settings, no registrar, nothing.
+
+**1. Get a Cloudflare API token (2 minutes):**
+
+1. Log into [cloudflare.com](https://cloudflare.com) → top-right profile → **My Profile** → **API Tokens**
+2. Click **Create Token** → use the **"Edit zone DNS"** template
+3. **Permissions:** Zone → DNS → **Edit** (already set)
+4. **Zone Resources:** Include → **Specific zone** → pick your domain
+5. **Leave Client IP Filtering and TTL empty** (empty = works from anywhere, never expires)
+6. Click **Continue → Create Token** → **copy the token** (shown once — save it)
+
+**2. Run the installer and say yes to Cloudflare:**
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh)
+```
+
+Pick **1) Install Panel**, then when asked:
+
+```
+Use Cloudflare to auto-create DNS records? [y/N]: y
+Cloudflare API token: ****************
+Your domain (e.g. ravenshop.store): ravenshop.store
+```
+
+The installer then **automatically**:
+- Creates `panel.<your-domain>` → your VPS IP (A record)
+- Creates `node.<your-domain>` → your VPS IP (A record)
+- Waits for DNS propagation
+- Installs the whole panel with those domains
+
+That's it — panel live, DNS done, admin created. (Manual DNS is still supported — just say **n** and enter your domains.)
 
 ### Direct commands (no menu, for scripting)
 
