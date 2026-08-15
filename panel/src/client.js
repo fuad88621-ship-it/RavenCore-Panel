@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { q, q1 } from './db.js';
 import { requireAuth } from './auth.js';
 import { agentRequest, agentRequestFor, consoleToken } from './agent-client.js';
@@ -258,7 +259,9 @@ export async function clientRoutes(fastify) {
     const agentRes = await agentRequestFor(server.uuid, `/servers/${server.uuid}/files/download?path=${encodeURIComponent(req.query.path)}`, 'GET', null, { raw: true });
     reply.header('Content-Disposition', agentRes.headers['content-disposition'] || `attachment; filename="${path.basename(req.query.path)}"`);
     reply.type(agentRes.headers['content-type'] || 'application/octet-stream');
-    return agentRes.body;
+    // fetch() gives a WHATWG ReadableStream — Fastify can't stream that
+    // directly (it would send an empty body). Convert to a Node stream.
+    return Readable.fromWeb(agentRes.body);
   });
 
   // Resources
@@ -500,11 +503,15 @@ export async function clientRoutes(fastify) {
     return { ok: true };
   });
 
-  // Delete own server
+  // Delete own server — OWNER/ADMIN ONLY. Subusers must never be able to
+  // delete a server they were merely granted access to, even with the
+  // 'settings' permission (that permission only covers rename/reinstall).
   fastify.delete('/api/client/servers/:id', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    if (!can(server, 'settings')) return reply.code(403).send({ error: 'Missing permission: settings' });
+    if (!req.user.root_admin && server.user_id !== req.user.id) {
+      return reply.code(403).send({ error: 'Only the owner can delete this server' });
+    }
     try {
       await agentRequestFor(server.uuid, `/servers/${server.uuid}`, 'DELETE');
     } catch (e) {
