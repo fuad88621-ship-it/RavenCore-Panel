@@ -41,6 +41,15 @@ app.get('/host/stats', auth, async (req, res) => {
   }
 });
 
+// Resources for every server on this node in one call (batch metrics).
+app.get('/host/resources', auth, async (req, res) => {
+  try {
+    res.json(await docker.getAllResources());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // The host's public IPv4 (used by the panel to auto-proxy game ports for
 // remote nodes whose FQDN points back at the panel host).
 app.get('/host/ip', auth, async (req, res) => {
