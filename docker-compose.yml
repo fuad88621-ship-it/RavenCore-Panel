@@ -43,12 +43,14 @@ services:
         max-file: "2"
     networks: [raven]
 
-  # Per-server MySQL databases
+  # Per-server MySQL databases. Bound to localhost only — the panel reaches
+  # it over the internal Docker network, so there is no reason to expose it
+  # to the public internet.
   mariadb:
     image: mariadb:11
     restart: unless-stopped
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     environment:
       MARIADB_ROOT_PASSWORD: ${DB_PASSWORD}
       MARIADB_USER: raven
@@ -74,11 +76,11 @@ services:
       SESSION_SECRET: ${SESSION_SECRET}
       AGENT_TOKEN: ${AGENT_TOKEN}
       CONSOLE_SECRET: ${CONSOLE_SECRET}
-      PANEL_URL: https://panel.ravenshop.store
-      NODE_URL: https://node.ravenshop.store
+      PANEL_URL: ${PANEL_URL}
+      NODE_URL: ${NODE_URL}
       AGENT_INTERNAL_URL: http://agent:8080
       NODE_NAME: ${NODE_NAME}
-      NODE_FQDN: node.ravenshop.store
+      NODE_FQDN: ${NODE_FQDN}
       NODE_MEMORY_MB: ${NODE_MEMORY_MB}
       NODE_DISK_MB: ${NODE_DISK_MB}
       NODE_CPU_CORES: ${NODE_CPU_CORES}
