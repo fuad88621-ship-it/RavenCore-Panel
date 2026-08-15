@@ -76,6 +76,9 @@ async function executeTask(sched, task) {
     case 'restart':
     case 'kill':
       await agentRequestFor(sched.server_uuid, `/servers/${sched.server_uuid}/power`, 'POST', { action: task.action });
+      // Keep the DB status in sync — scheduled power actions were leaving
+      // the status stale (e.g. container running but panel showing offline).
+      await q(`UPDATE servers SET status = $1 WHERE id = $2`, [task.action === 'start' || task.action === 'restart' ? 'running' : 'offline', sched.server_id]);
       break;
     case 'command':
       await agentRequestFor(sched.server_uuid, `/servers/${sched.server_uuid}/command`, 'POST', { command: task.payload });
