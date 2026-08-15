@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Card, GlowButton, Icons, SectionHeader, useConfirm } from '../../components/ui.jsx';
+import { Card, GlowButton, Icons, SectionHeader, useConfirm, useToast } from '../../components/ui.jsx';
 
 export default function Locations() {
+  const toast = useToast();
   const [locations, setLocations] = useState([]);
   const confirm = useConfirm();
   const [showForm, setShowForm] = useState(false);
@@ -26,6 +27,7 @@ export default function Locations() {
     try {
       await api.admin.createLocation(short, long);
       setShort(''); setLong(''); setShowForm(false);
+      toast.push('Location created');
       load();
     } catch (err) {
       setError(err.message);
