@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { requireApiKey, hasPermission } from './api-keys.js';
 import { agentRequest, agentRequestFor } from './agent-client.js';
 import { renderStartup } from './admin-servers.js';
+import { removePortProxy, pickFreeAllocations } from './admin-servers.js';
 import { config } from './config.js';
 
 // Pterodactyl-style Application API, authenticated with ptla_ keys.
@@ -55,20 +56,8 @@ export async function applicationRoutes(fastify) {
     for (const [k, val] of Object.entries(env || {})) mergedEnv[k] = val;
 
     // Claim free allocations (excluding ports used by other nodes on the same
-    // host) so API-created servers actually get a port.
-    const freeAllocs = await q(
-      `SELECT a.* FROM allocations a
-       WHERE a.node_id = $1 AND a.server_id IS NULL
-       AND a.port NOT IN (
-         SELECT a2.port FROM allocations a2
-         JOIN servers s ON s.id = a2.server_id
-         JOIN nodes n ON n.id = a2.node_id
-         WHERE n.fqdn = (SELECT fqdn FROM nodes WHERE id = $1)
-           AND a2.port IS NOT NULL
-       )
-       ORDER BY a.port LIMIT $2`,
-      [node.id, allocCount]
-    );
+    // host or bound on the panel host) so API-created servers get a port.
+    const freeAllocs = await pickFreeAllocations(node.id, allocCount);
     if (allocCount > 0 && freeAllocs.length === 0) {
       return reply.code(400).send({ error: 'Node has no free allocations. Add ports to it first.' });
     }
@@ -125,6 +114,9 @@ export async function applicationRoutes(fastify) {
     for (const db of dbs) {
       try { const { deleteDatabase } = await import('./admin-databases.js'); await deleteDatabase(db); } catch (e) { console.error('[api] db cleanup failed:', e.message); }
     }
+    // Free allocations + remove any auto-created game-port proxies.
+    const allocs = await q(`SELECT port FROM allocations WHERE server_id = $1`, [server.id]);
+    for (const a of allocs) removePortProxy(a.port).catch(() => {});
     await q(`UPDATE allocations SET server_id = NULL WHERE server_id = $1`, [server.id]);
     await q(`DELETE FROM servers WHERE id = $1`, [server.id]);
     return { ok: true };
