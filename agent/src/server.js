@@ -368,16 +368,23 @@ docker.restoreRunningContainers().then(() => console.log('[agent] containers res
 // `path` option is a literal match, not a pattern).
 const wss = new WebSocketServer({ server });
 
-wss.on('connection', async (ws, req) => {
+wss.on('connection', (ws, req) => {
+  handleConsole(ws, req).catch((e) => {
+    console.error('[agent] ws handler error:', e.message);
+    try { ws.close(1011, 'internal error'); } catch {}
+  });
+});
+
+async function handleConsole(ws, req) {
   const url = new URL(req.url, 'http://localhost');
   const match = url.pathname.match(/^\/servers\/([^/]+)\/ws$/);
   if (!match) {
-    ws.close(4000, 'bad path');
+    try { ws.close(4000, 'bad path'); } catch {}
     return;
   }
   const uuid = match[1];
   if (!docker.UUID_RE.test(uuid)) {
-    ws.close(4000, 'bad path');
+    try { ws.close(4000, 'bad path'); } catch {}
     return;
   }
   const token = url.searchParams.get('token');
@@ -385,7 +392,7 @@ wss.on('connection', async (ws, req) => {
     const payload = jwt.verify(token, config.consoleSecret);
     if (payload.sub !== uuid || payload.scope !== 'console') throw new Error('token mismatch');
   } catch {
-    ws.close(4001, 'invalid token');
+    try { ws.close(4001, 'invalid token'); } catch {}
     return;
   }
 
@@ -400,7 +407,9 @@ wss.on('connection', async (ws, req) => {
     console.log(`[agent] ws attached: ${uuid}`);
   } catch (e) {
     console.log(`[agent] ws attach failed: ${uuid}: ${e.message}`);
-    ws.close(4002, e.message);
+    // ws.close() reasons must be <= 123 bytes — a long attach error would
+    // throw a RangeError here and crash the whole agent process.
+    try { ws.close(4002, String(e.message).slice(0, 120)); } catch {}
     return;
   }
 
@@ -412,7 +421,7 @@ wss.on('connection', async (ws, req) => {
     console.log(`[agent] ws closed: ${uuid}`);
     try { stream?.end(); } catch {}
   });
-});
+}
 
 console.log('[agent] console websocket ready');
 
