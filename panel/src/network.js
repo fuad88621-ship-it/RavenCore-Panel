@@ -5,11 +5,19 @@ import crypto from 'node:crypto';
 async function getServerForUser(req, reply) {
   const server = await q1(`SELECT * FROM servers WHERE id = $1`, [req.params.id]);
   if (!server) { reply.code(404).send({ error: 'Server not found' }); return null; }
-  if (!req.user.root_admin && server.user_id !== req.user.id) {
-    reply.code(403).send({ error: 'Not your server' });
-    return null;
-  }
+  if (req.user.root_admin || server.user_id === req.user.id) return server;
+  const su = await q1(
+    `SELECT permissions FROM server_subusers WHERE server_id = $1 AND user_id = $2`,
+    [server.id, req.user.id]
+  );
+  if (!su) { reply.code(403).send({ error: 'Not your server' }); return null; }
+  server.subuser_permissions = su.permissions || [];
   return server;
+}
+
+function can(server, perm) {
+  if (!server.subuser_permissions) return true;
+  return server.subuser_permissions.includes(perm);
 }
 
 export async function networkRoutes(fastify) {
@@ -17,6 +25,7 @@ export async function networkRoutes(fastify) {
   fastify.get('/api/client/servers/:id/network', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'network')) return reply.code(403).send({ error: 'Missing permission: network' });
     const allocations = await q(
       `SELECT a.*, n.name AS node_name FROM allocations a JOIN nodes n ON n.id = a.node_id
        WHERE a.server_id = $1 ORDER BY a.port`,
@@ -29,6 +38,7 @@ export async function networkRoutes(fastify) {
   fastify.get('/api/client/servers/:id/sftp', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'network')) return reply.code(403).send({ error: 'Missing permission: network' });
     let pw = server.sftp_password;
     if (!pw) {
       pw = crypto.randomBytes(12).toString('hex');
@@ -53,6 +63,7 @@ export async function networkRoutes(fastify) {
   fastify.post('/api/client/servers/:id/sftp/password', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'network')) return reply.code(403).send({ error: 'Missing permission: network' });
     const pw = crypto.randomBytes(12).toString('hex');
     await q(`UPDATE servers SET sftp_password = $1 WHERE id = $2`, [pw, server.id]);
     // Sync to the agent so the SFTP server accepts the new password
