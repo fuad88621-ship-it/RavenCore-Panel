@@ -94,6 +94,8 @@ export const api = {
     updateNode: (id, body) => req(`/api/admin/nodes/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     deleteNode: (id) => req(`/api/admin/nodes/${id}`, { method: 'DELETE' }),
     nodeAllocations: (id) => req(`/api/admin/nodes/${id}/allocations`),
+    nodeCleanupPreview: (id, days) => req(`/api/admin/nodes/${id}/cleanup-preview?days=${days}`),
+    nodeCleanup: (id, days, confirm) => req(`/api/admin/nodes/${id}/cleanup`, { method: 'POST', body: JSON.stringify({ days, confirm }) }),
     addAllocation: (id, ip, port) => req(`/api/admin/nodes/${id}/allocations`, { method: 'POST', body: JSON.stringify({ ip, port }) }),
     addAllocationRange: (id, ip, from, to) => req(`/api/admin/nodes/${id}/allocations/range`, { method: 'POST', body: JSON.stringify({ ip, from, to }) }),
     deleteAllocation: (id) => req(`/api/admin/allocations/${id}`, { method: 'DELETE' }),
