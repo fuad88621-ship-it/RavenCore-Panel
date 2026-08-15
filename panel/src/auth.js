@@ -57,6 +57,11 @@ export async function authRoutes(fastify) {
   fastify.post('/api/auth/register', async (req, reply) => {
     const { username, email, password } = req.body || {};
     try {
+      // Respect the panel.registration setting (Admin → Settings).
+      const reg = await q1(`SELECT value FROM settings WHERE key = 'panel.registration'`);
+      if (reg && reg.value === 'false') {
+        return reply.code(403).send({ error: 'Registration is disabled' });
+      }
       const user = await registerUser(username, email, password);
       const token = await createSession(user.id);
       reply.setCookie('raven_session', token, cookieOpts());
