@@ -39,11 +39,24 @@ async function getServerForUser(req, reply) {
     reply.code(404).send({ error: 'Server not found' });
     return null;
   }
-  if (!req.user.root_admin && server.user_id !== req.user.id) {
+  if (req.user.root_admin || server.user_id === req.user.id) return server;
+  // Subuser access — attach their permissions so routes can enforce them.
+  const su = await q1(
+    `SELECT permissions FROM server_subusers WHERE server_id = $1 AND user_id = $2`,
+    [server.id, req.user.id]
+  );
+  if (!su) {
     reply.code(403).send({ error: 'Not your server' });
     return null;
   }
+  server.subuser_permissions = su.permissions || [];
   return server;
+}
+
+// Permission check for subusers. Owners/admins always pass.
+function can(server, perm) {
+  if (!server.subuser_permissions) return true;
+  return server.subuser_permissions.includes(perm);
 }
 
 export async function clientRoutes(fastify) {
@@ -102,7 +115,10 @@ export async function clientRoutes(fastify) {
       `SELECT m.* FROM mounts m JOIN mount_servers ms ON ms.mount_id = m.id WHERE ms.server_id = $1`,
       [server.id]
     );
-    return { server, variables, mounts };
+    // Let the frontend hide tabs the current user can't use.
+    const isOwner = req.user.root_admin || server.user_id === req.user.id;
+    const perms = isOwner ? null : (server.subuser_permissions || []);
+    return { server, variables, mounts, perms };
   });
 
   // Activity feed
@@ -122,6 +138,7 @@ export async function clientRoutes(fastify) {
   fastify.post('/api/client/servers/:id/power', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'console')) return reply.code(403).send({ error: 'Missing permission: console' });
     const { action } = req.body || {};
     if (!['start', 'stop', 'restart', 'kill'].includes(action)) return reply.code(400).send({ error: 'Invalid action' });
     if (server.status === 'suspended') return reply.code(403).send({ error: 'Server suspended' });
@@ -144,6 +161,7 @@ export async function clientRoutes(fastify) {
   fastify.post('/api/client/servers/:id/command', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'console')) return reply.code(403).send({ error: 'Missing permission: console' });
     const { command } = req.body || {};
     if (!command) return reply.code(400).send({ error: 'command required' });
     await agentRequestFor(server.uuid, `/servers/${server.uuid}/command`, 'POST', { command });
@@ -154,6 +172,7 @@ export async function clientRoutes(fastify) {
   fastify.get('/api/client/servers/:id/console', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'console')) return reply.code(403).send({ error: 'Missing permission: console' });
     // Node agents (installed via install.sh) verify console JWTs with their
     // own CONSOLE_SECRET = daemon_token. Local nodes share the panel's
     // console_secret. Sign with the right secret per node so consoles work on
@@ -176,6 +195,7 @@ export async function clientRoutes(fastify) {
   fastify.get('/api/client/servers/:id/files', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'files')) return reply.code(403).send({ error: 'Missing permission: files' });
     const path = req.query.path || '/';
     return agentRequestFor(server.uuid, `/servers/${server.uuid}/files?path=${encodeURIComponent(path)}`);
   });
@@ -183,12 +203,14 @@ export async function clientRoutes(fastify) {
   fastify.post('/api/client/servers/:id/files/read', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'files')) return reply.code(403).send({ error: 'Missing permission: files' });
     return agentRequestFor(server.uuid, `/servers/${server.uuid}/files/read`, 'POST', req.body);
   });
 
   fastify.post('/api/client/servers/:id/files/write', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'files')) return reply.code(403).send({ error: 'Missing permission: files' });
     const res = await agentRequestFor(server.uuid, `/servers/${server.uuid}/files/write`, 'POST', req.body);
     await logActivity(server.id, req.user.id, 'file.write', { path: req.body.path });
     return res;
@@ -197,36 +219,42 @@ export async function clientRoutes(fastify) {
   fastify.post('/api/client/servers/:id/files/delete', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'files')) return reply.code(403).send({ error: 'Missing permission: files' });
     return agentRequestFor(server.uuid, `/servers/${server.uuid}/files/delete`, 'POST', req.body);
   });
 
   fastify.post('/api/client/servers/:id/files/rename', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'files')) return reply.code(403).send({ error: 'Missing permission: files' });
     return agentRequestFor(server.uuid, `/servers/${server.uuid}/files/rename`, 'POST', req.body);
   });
 
   fastify.post('/api/client/servers/:id/files/archive', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'files')) return reply.code(403).send({ error: 'Missing permission: files' });
     return agentRequestFor(server.uuid, `/servers/${server.uuid}/files/archive`, 'POST', req.body);
   });
 
   fastify.post('/api/client/servers/:id/files/extract', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'files')) return reply.code(403).send({ error: 'Missing permission: files' });
     return agentRequestFor(server.uuid, `/servers/${server.uuid}/files/extract`, 'POST', req.body);
   });
 
   fastify.post('/api/client/servers/:id/files/mkdir', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'files')) return reply.code(403).send({ error: 'Missing permission: files' });
     return agentRequestFor(server.uuid, `/servers/${server.uuid}/files/mkdir`, 'POST', req.body);
   });
 
   fastify.get('/api/client/servers/:id/files/download', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'files')) return reply.code(403).send({ error: 'Missing permission: files' });
     const agentRes = await agentRequestFor(server.uuid, `/servers/${server.uuid}/files/download?path=${encodeURIComponent(req.query.path)}`, 'GET', null, { raw: true });
     reply.header('Content-Disposition', agentRes.headers['content-disposition'] || `attachment; filename="${path.basename(req.query.path)}"`);
     reply.type(agentRes.headers['content-type'] || 'application/octet-stream');
@@ -237,12 +265,15 @@ export async function clientRoutes(fastify) {
   fastify.get('/api/client/servers/:id/resources', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'network')) return reply.code(403).send({ error: 'Missing permission: network' });
     return agentRequestFor(server.uuid, `/servers/${server.uuid}/resources`);
   });
 
   // Resource history (live graphs)
   fastify.get('/api/client/servers/:id/metrics', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
+    if (!server) return;
+    if (!can(server, 'network')) return reply.code(403).send({ error: 'Missing permission: network' });
     if (!server) return;
     const hours = parseInt(req.query.hours) || 24;
     return { metrics: await getServerMetrics(server.id, hours) };
@@ -281,6 +312,7 @@ export async function clientRoutes(fastify) {
   fastify.get('/api/client/servers/:id/install-log', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'console')) return reply.code(403).send({ error: 'Missing permission: console' });
     const res = await agentRequestFor(server.uuid, `/servers/${server.uuid}/install-log`, 'GET');
     return { log: (res && res.log) || '' };
   });
@@ -307,6 +339,7 @@ export async function clientRoutes(fastify) {
   fastify.get('/api/client/servers/:id/plugins/search', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'files')) return reply.code(403).send({ error: 'Missing permission: files' });
     const qq = String(req.query.q || '').trim();
     // Empty query -> popular plugins (sorted by downloads)
     const facets = [['project_type:plugin']];
@@ -331,12 +364,14 @@ export async function clientRoutes(fastify) {
   fastify.get('/api/client/servers/:id/plugins', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'files')) return reply.code(403).send({ error: 'Missing permission: files' });
     return await agentRequestFor(server.uuid, `/servers/${server.uuid}/plugins`, 'GET');
   });
 
   fastify.post('/api/client/servers/:id/plugins/install', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'files')) return reply.code(403).send({ error: 'Missing permission: files' });
     const { project_id } = req.body || {};
     if (!project_id) return reply.code(400).send({ error: 'project_id is required' });
     // Fetch the project's latest version and grab the first jar file
@@ -355,6 +390,7 @@ export async function clientRoutes(fastify) {
   fastify.delete('/api/client/servers/:id/plugins/:filename', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'files')) return reply.code(403).send({ error: 'Missing permission: files' });
     return await agentRequestFor(server.uuid, `/servers/${server.uuid}/plugins/${encodeURIComponent(req.params.filename)}`, 'DELETE');
   });
 
@@ -362,6 +398,7 @@ export async function clientRoutes(fastify) {
   fastify.get('/api/client/servers/:id/databases', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'databases')) return reply.code(403).send({ error: 'Missing permission: databases' });
     const databases = await q(`SELECT * FROM server_databases WHERE server_id = $1 ORDER BY created_at DESC`, [server.id]);
     return { databases };
   });
@@ -369,6 +406,7 @@ export async function clientRoutes(fastify) {
   fastify.post('/api/client/servers/:id/databases', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'databases')) return reply.code(403).send({ error: 'Missing permission: databases' });
     const count = await q1(`SELECT count(*)::int AS c FROM server_databases WHERE server_id = $1`, [server.id]);
     if (count.c >= server.databases) return reply.code(400).send({ error: `Database limit reached (${server.databases})` });
     const db = await createDatabase(server, req.body?.name);
@@ -378,19 +416,27 @@ export async function clientRoutes(fastify) {
 
   fastify.delete('/api/client/databases/:id', { preHandler: requireAuth }, async (req, reply) => {
     const record = await q1(
-      `SELECT d.* FROM server_databases d JOIN servers s ON s.id = d.server_id WHERE d.id = $1 AND (s.user_id = $2 OR $3)`,
-      [req.params.id, req.user.id, req.user.root_admin]
+      `SELECT d.*, s.user_id AS owner_id FROM server_databases d JOIN servers s ON s.id = d.server_id WHERE d.id = $1`,
+      [req.params.id]
     );
     if (!record) return reply.code(404).send({ error: 'Database not found' });
+    if (!req.user.root_admin && record.owner_id !== req.user.id) {
+      const su = await q1(`SELECT permissions FROM server_subusers WHERE server_id = $1 AND user_id = $2`, [record.server_id, req.user.id]);
+      if (!su || !(su.permissions || []).includes('databases')) return reply.code(403).send({ error: 'Missing permission: databases' });
+    }
     return deleteDatabase(record);
   });
 
   fastify.post('/api/client/databases/:id/rotate', { preHandler: requireAuth }, async (req, reply) => {
     const record = await q1(
-      `SELECT d.* FROM server_databases d JOIN servers s ON s.id = d.server_id WHERE d.id = $1 AND (s.user_id = $2 OR $3)`,
-      [req.params.id, req.user.id, req.user.root_admin]
+      `SELECT d.*, s.user_id AS owner_id FROM server_databases d JOIN servers s ON s.id = d.server_id WHERE d.id = $1`,
+      [req.params.id]
     );
     if (!record) return reply.code(404).send({ error: 'Database not found' });
+    if (!req.user.root_admin && record.owner_id !== req.user.id) {
+      const su = await q1(`SELECT permissions FROM server_subusers WHERE server_id = $1 AND user_id = $2`, [record.server_id, req.user.id]);
+      if (!su || !(su.permissions || []).includes('databases')) return reply.code(403).send({ error: 'Missing permission: databases' });
+    }
     const updated = await rotateDatabasePassword(record);
     return { database: updated };
   });
@@ -399,6 +445,7 @@ export async function clientRoutes(fastify) {
   fastify.get('/api/client/servers/:id/startup', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'startup')) return reply.code(403).send({ error: 'Missing permission: startup' });
     const variables = await q(`SELECT * FROM egg_variables WHERE egg_id = $1 ORDER BY created_at`, [server.egg_id]);
     return { variables, env: server.env, startup_command: server.startup_command, docker_image: server.docker_image };
   });
@@ -406,6 +453,7 @@ export async function clientRoutes(fastify) {
   fastify.patch('/api/client/servers/:id/startup', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'startup')) return reply.code(403).send({ error: 'Missing permission: startup' });
     const { env } = req.body || {};
     if (!env) return reply.code(400).send({ error: 'env required' });
     const variables = await q(`SELECT * FROM egg_variables WHERE egg_id = $1`, [server.egg_id]);
@@ -426,6 +474,7 @@ export async function clientRoutes(fastify) {
   fastify.patch('/api/client/servers/:id/settings', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'settings')) return reply.code(403).send({ error: 'Missing permission: settings' });
     const { name, description } = req.body || {};
     const updated = await q1(
       `UPDATE servers SET name = COALESCE($1, name), description = COALESCE($2, description) WHERE id = $3 RETURNING *`,
@@ -437,6 +486,7 @@ export async function clientRoutes(fastify) {
   fastify.post('/api/client/servers/:id/reinstall', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'settings')) return reply.code(403).send({ error: 'Missing permission: settings' });
     await q(`UPDATE servers SET status = 'installing' WHERE id = $1`, [server.id]);
     agentRequestFor(server.uuid, `/servers/${server.uuid}/reinstall`, 'POST', {
       image: server.egg_image,
@@ -454,6 +504,7 @@ export async function clientRoutes(fastify) {
   fastify.delete('/api/client/servers/:id', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'settings')) return reply.code(403).send({ error: 'Missing permission: settings' });
     try {
       await agentRequestFor(server.uuid, `/servers/${server.uuid}`, 'DELETE');
     } catch (e) {
