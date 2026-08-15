@@ -5,7 +5,7 @@ import { requireAuth } from './auth.js';
 import { agentRequest, agentRequestFor, consoleToken } from './agent-client.js';
 import { config } from './config.js';
 import { getServerMetrics } from './metrics.js';
-import { renderStartup, validateRules } from './admin-servers.js';
+import { renderStartup, validateRules, removePortProxy } from './admin-servers.js';
 import { createDatabase, deleteDatabase, rotateDatabasePassword } from './admin-databases.js';
 
 async function logActivity(serverId, userId, action, metadata = {}) {
@@ -531,6 +531,9 @@ export async function clientRoutes(fastify) {
     for (const db of dbs) {
       try { await deleteDatabase(db); } catch (e) { console.error('[client] db cleanup failed:', e.message); }
     }
+    // Free allocations + remove any auto-created game-port proxies.
+    const allocs = await q(`SELECT port FROM allocations WHERE server_id = $1`, [server.id]);
+    for (const a of allocs) removePortProxy(a.port).catch(() => {});
     await q(`UPDATE allocations SET server_id = NULL WHERE server_id = $1`, [server.id]);
     await q(`DELETE FROM servers WHERE id = $1`, [server.id]);
     return { ok: true };
