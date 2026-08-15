@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Card, SectionHeader, useConfirm } from '../../components/ui.jsx';
+import { Card, SectionHeader, Skeleton, useConfirm, useToast } from '../../components/ui.jsx';
 
 export default function Databases() {
   const [databases, setDatabases] = useState([]);
+  const [loading, setLoading] = useState(true);
   const confirm = useConfirm();
+  const toast = useToast();
   const [error, setError] = useState('');
 
   async function load() {
@@ -13,6 +15,8 @@ export default function Databases() {
       setDatabases(d.databases);
     } catch (e) {
       setError(e.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -20,13 +24,36 @@ export default function Databases() {
 
   async function remove(db) {
     if (!await confirm(`Delete database ${db.database_name}? This cannot be undone.`)) return;
-    await api.admin.deleteDatabase(db.id);
-    load();
+    try {
+      await api.admin.deleteDatabase(db.id);
+      toast.push('Database deleted');
+      load();
+    } catch (err) {
+      toast.push(err.message || 'Delete failed', 'error');
+    }
   }
 
   async function rotate(db) {
-    await api.admin.rotateDatabase(db.id);
-    load();
+    try {
+      await api.admin.rotateDatabase(db.id);
+      toast.push('Password rotated');
+      load();
+    } catch (err) {
+      toast.push(err.message || 'Rotate failed', 'error');
+    }
+  }
+
+  if (loading) {
+    return (
+      <div>
+        <SectionHeader title="Databases" sub="All MySQL databases across the panel." />
+        <div className="space-y-2">
+          <Skeleton className="h-11 w-full rounded-xl" />
+          <Skeleton className="h-11 w-full rounded-xl" />
+          <Skeleton className="h-11 w-full rounded-xl" />
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Card, GlowButton, Icons, SectionHeader, useConfirm, useToast, useCopy } from '../../components/ui.jsx';
+import { Card, GlowButton, Icons, SectionHeader, Skeleton, useConfirm, useToast, useCopy } from '../../components/ui.jsx';
 
 const PERMISSIONS = ['*', 'servers.read', 'servers.create', 'servers.delete', 'servers.power', 'users.read', 'users.create', 'nodes.read', 'nodes.create', 'nodes.delete', 'node:create', 'locations.read', 'nests.read'];
 
 export default function ApiKeys() {
   const [keys, setKeys] = useState([]);
+  const [loading, setLoading] = useState(true);
   const confirm = useConfirm();
   const toast = useToast();
   const copyText = useCopy();
@@ -20,6 +21,8 @@ export default function ApiKeys() {
       setKeys(d.keys);
     } catch (e) {
       setError(e.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -40,8 +43,13 @@ export default function ApiKeys() {
 
   async function remove(id) {
     if (!await confirm('Delete this API key? Applications using it will stop working.')) return;
-    await api.admin.deleteApiKey(id);
-    load();
+    try {
+      await api.admin.deleteApiKey(id);
+      toast.push('API key deleted');
+      load();
+    } catch (err) {
+      toast.push(err.message || 'Delete failed', 'error');
+    }
   }
 
   function togglePerm(p) {
@@ -50,6 +58,16 @@ export default function ApiKeys() {
       const rest = prev.filter((x) => x !== '*');
       return rest.includes(p) ? rest.filter((x) => x !== p) : [...rest, p];
     });
+  }
+
+  if (loading) {
+    return (
+      <div className="max-w-3xl">
+        <SectionHeader title="Application API" sub="Create API keys to manage the panel programmatically." />
+        <Skeleton className="mb-6 h-40 w-full rounded-2xl" />
+        <Skeleton className="h-32 w-full rounded-2xl" />
+      </div>
+    );
   }
 
   return (
