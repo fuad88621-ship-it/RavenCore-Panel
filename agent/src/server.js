@@ -511,17 +511,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const HOST_KEY_PATH = path.join(config.botDataDir, '..', 'sftp_host_key.pem');
-let hostKey;
+const EC_KEY_PATH = path.join(config.botDataDir, '..', 'sftp_host_key_ecdsa.pem');
+const hostKeys = [];
+// Legacy RSA key (if present) — kept for older clients.
+try { hostKeys.push(fs.readFileSync(HOST_KEY_PATH)); } catch {}
+// ECDSA P-256 key — modern clients (OpenSSH 8.8+) reject ssh-rsa by default,
+// so this is the primary host key. ssh2-streams only parses SEC1/PKCS1 PEM,
+// so export as SEC1 (ed25519/EC PKCS8 are not supported by the library).
+let ecKey;
 try {
-  hostKey = fs.readFileSync(HOST_KEY_PATH);
+  ecKey = fs.readFileSync(EC_KEY_PATH);
 } catch {
-  const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
-  hostKey = privateKey.export({ type: 'pkcs1', format: 'pem' });
-  fs.mkdirSync(path.dirname(HOST_KEY_PATH), { recursive: true });
-  fs.writeFileSync(HOST_KEY_PATH, hostKey);
+  const { privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  ecKey = privateKey.export({ type: 'sec1', format: 'pem' });
+  fs.mkdirSync(path.dirname(EC_KEY_PATH), { recursive: true });
+  fs.writeFileSync(EC_KEY_PATH, ecKey);
 }
+hostKeys.push(ecKey);
 
-const sftpServer = new SSHServer({ hostKeys: [hostKey] }, (client) => {
+const sftpServer = new SSHServer({ hostKeys }, (client) => {
   let sftpInfo = null;
 
   client.on('authentication', (ctx) => {
