@@ -41,6 +41,46 @@ app.get('/host/stats', auth, async (req, res) => {
   }
 });
 
+// The host's public IPv4 (used by the panel to auto-proxy game ports for
+// remote nodes whose FQDN points back at the panel host).
+app.get('/host/ip', auth, async (req, res) => {
+  try {
+    res.json({ ip: await docker.getHostIp() });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// TCP proxy: forward a host port to a target (used to make game ports on
+// remote nodes reachable through the panel host when the node's FQDN points
+// at the panel). Runs as a socat container.
+app.post('/proxy', auth, async (req, res) => {
+  try {
+    const { port, target } = req.body || {};
+    if (!port || !target) return res.status(400).json({ error: 'port and target are required' });
+    res.json(await docker.createProxy(port, target));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/proxy/:port', auth, async (req, res) => {
+  try {
+    res.json(await docker.removeProxy(req.params.port));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// List active proxy containers (ports forwarded on this host).
+app.get('/proxy', auth, async (req, res) => {
+  try {
+    res.json(await docker.listProxies());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/servers', async (req, res) => {
   try {
     const result = await docker.createBot(req.body);
