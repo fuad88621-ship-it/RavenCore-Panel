@@ -108,7 +108,12 @@ if [ -f "$PANEL_DIR/docker-compose.yml" ]; then
   if [ "$UPD" = "y" ] || [ "$UPD" = "Y" ]; then
     info "Updating panel…"
     cd "$PANEL_DIR"
+    # The generated Caddyfile (user's domains) is a tracked file with local
+    # changes — git pull would fail on it. Preserve it across the update.
+    cp Caddyfile /tmp/raven-caddyfile.bak 2>/dev/null || true
+    git checkout -- Caddyfile 2>/dev/null || true
     git pull --ff-only 2>/dev/null || warn "git pull failed — continuing with existing source"
+    cp /tmp/raven-caddyfile.bak Caddyfile 2>/dev/null || true
     ${COMPOSE} up -d --build
     ok "Panel updated."
     exit 0
