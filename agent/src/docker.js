@@ -112,7 +112,7 @@ export async function createBot({ uuid, identifier, image, startup_command, inst
         Binds: [`${dir}:/mnt/server`],
         NetworkMode: net.id,
       },
-      Cmd: ['sh', '-c', cleanInstall],
+      Cmd: ['bash', '-c', cleanInstall],
       AttachStdout: true,
       AttachStderr: true,
       Labels: { 'raven.uuid': uuid, 'raven.install': 'true' },
