@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../../api.js';
-import { Badge, Card, GlowButton, Icons, SectionHeader, Select, cn, useConfirm, useToast } from '../../components/ui.jsx';
+import { Badge, Card, GlowButton, Icons, SectionHeader, Select, Skeleton, cn, useConfirm, useToast } from '../../components/ui.jsx';
 
 function EggDetail({ egg, onBack }) {
   const [data, setData] = useState(null);
@@ -32,11 +32,27 @@ function EggDetail({ egg, onBack }) {
   }
 
   async function removeVar(id) {
-    await api.admin.deleteEggVariable(id);
-    load();
+    try {
+      await api.admin.deleteEggVariable(id);
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
-  if (!data) return <p className="text-zinc-500">Loading…</p>;
+  if (!data) {
+    return (
+      <div>
+        <Skeleton className="mb-2 h-7 w-40" />
+        <Skeleton className="mb-6 h-4 w-56" />
+        <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Skeleton className="h-16 w-full rounded-2xl" />
+          <Skeleton className="h-16 w-full rounded-2xl" />
+        </div>
+        <Skeleton className="h-40 w-full rounded-2xl" />
+      </div>
+    );
+  }
 
   return (
     <div>

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Card, EmptyState, GlowButton, Icons, SectionHeader, useConfirm, useToast } from '../../components/ui.jsx';
+import { Card, EmptyState, GlowButton, Icons, SectionHeader, Skeleton, useConfirm, useToast } from '../../components/ui.jsx';
 
 export default function Mounts() {
   const toast = useToast();
   const [mounts, setMounts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const confirm = useConfirm();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', source: '', target: '', read_only: false });
@@ -16,6 +17,8 @@ export default function Mounts() {
       setMounts(d.mounts);
     } catch (e) {
       setError(e.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -36,8 +39,25 @@ export default function Mounts() {
 
   async function remove(m) {
     if (!await confirm(`Delete mount ${m.name}?`)) return;
-    await api.admin.deleteMount(m.id);
-    load();
+    try {
+      await api.admin.deleteMount(m.id);
+      toast.push('Mount deleted');
+      load();
+    } catch (err) {
+      toast.push(err.message || 'Delete failed', 'error');
+    }
+  }
+
+  if (loading) {
+    return (
+      <div>
+        <SectionHeader title="Mounts" sub="Mount host directories into server containers." />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Skeleton className="h-24 w-full rounded-2xl" />
+          <Skeleton className="h-24 w-full rounded-2xl" />
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -192,6 +192,15 @@
   animation: shimmer 1.5s infinite;
 }
 
+/* Hide scrollbar on horizontally-scrolling strips (e.g. server detail tabs) */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 /* Card hover lift */
 .card-lift {
   transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease;

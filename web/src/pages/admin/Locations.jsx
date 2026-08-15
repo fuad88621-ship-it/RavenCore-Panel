@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Card, GlowButton, Icons, SectionHeader, useConfirm, useToast } from '../../components/ui.jsx';
+import { Card, GlowButton, Icons, SectionHeader, Skeleton, useConfirm, useToast } from '../../components/ui.jsx';
 
 export default function Locations() {
   const toast = useToast();
   const [locations, setLocations] = useState([]);
+  const [loading, setLoading] = useState(true);
   const confirm = useConfirm();
   const [showForm, setShowForm] = useState(false);
   const [short, setShort] = useState('');
@@ -17,6 +18,8 @@ export default function Locations() {
       setLocations(d.locations);
     } catch (e) {
       setError(e.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -38,10 +41,24 @@ export default function Locations() {
     if (!await confirm(`Delete location ${loc.short}?`)) return;
     try {
       await api.admin.deleteLocation(loc.id);
+      toast.push('Location deleted');
       load();
     } catch (err) {
-      setError(err.message);
+      toast.push(err.message || 'Delete failed', 'error');
     }
+  }
+
+  if (loading) {
+    return (
+      <div>
+        <SectionHeader title="Locations" sub="Group your nodes by region or datacenter." />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Skeleton className="h-[72px] w-full rounded-2xl" />
+          <Skeleton className="h-[72px] w-full rounded-2xl" />
+          <Skeleton className="h-[72px] w-full rounded-2xl" />
+        </div>
+      </div>
+    );
   }
 
   return (

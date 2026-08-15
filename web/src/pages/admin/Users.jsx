@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Badge, Card, GlowButton, Icons, SectionHeader, cn, useConfirm, useToast } from '../../components/ui.jsx';
+import { Badge, Card, GlowButton, Icons, SectionHeader, Skeleton, cn, useConfirm, useToast } from '../../components/ui.jsx';
 
 export default function Users() {
   const toast = useToast();
   const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ username: '', email: '', password: '', root_admin: false });
   const [error, setError] = useState('');
@@ -16,6 +17,8 @@ export default function Users() {
       setUsers(d.users);
     } catch (e) {
       setError(e.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -35,23 +38,47 @@ export default function Users() {
   }
 
   async function toggleAdmin(u) {
-    await api.admin.updateUser(u.id, { root_admin: !u.root_admin });
-    load();
+    try {
+      await api.admin.updateUser(u.id, { root_admin: !u.root_admin });
+      toast.push(u.root_admin ? 'Admin removed' : 'User promoted to admin');
+      load();
+    } catch (err) {
+      toast.push(err.message || 'Update failed', 'error');
+    }
   }
 
   async function toggleSuspend(u) {
-    await api.admin.updateUser(u.id, { suspended: !u.suspended });
-    load();
+    try {
+      await api.admin.updateUser(u.id, { suspended: !u.suspended });
+      toast.push(u.suspended ? 'User unsuspended' : 'User suspended');
+      load();
+    } catch (err) {
+      toast.push(err.message || 'Update failed', 'error');
+    }
   }
 
   async function remove(u) {
     if (!await confirm(`Delete user ${u.username}? This deletes all their servers.`)) return;
     try {
       await api.admin.deleteUser(u.id);
+      toast.push('User deleted');
       load();
     } catch (err) {
-      setError(err.message);
+      toast.push(err.message || 'Delete failed', 'error');
     }
+  }
+
+  if (loading) {
+    return (
+      <div>
+        <SectionHeader title="Users" sub="Manage panel accounts." />
+        <div className="space-y-2">
+          <Skeleton className="h-11 w-full rounded-xl" />
+          <Skeleton className="h-11 w-full rounded-xl" />
+          <Skeleton className="h-11 w-full rounded-xl" />
+        </div>
+      </div>
+    );
   }
 
   return (
