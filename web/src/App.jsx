@@ -524,6 +524,10 @@ export default function App() {
       </AuthContext.Provider>
       </ConfirmProvider>
       <Toasts toasts={toastApi.toasts} onDismiss={toastApi.dismiss} />
+      {/* RavenCore attribution — required by the license, do not remove */}
+      <div className="pointer-events-none fixed bottom-1.5 left-1/2 z-[90] -translate-x-1/2 text-[10px] text-zinc-600">
+        Powered by <span className="font-semibold text-zinc-500">RavenCore</span>
+      </div>
     </ToastContext.Provider>
   );
 }
