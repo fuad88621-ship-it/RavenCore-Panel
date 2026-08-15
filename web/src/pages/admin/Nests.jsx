@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../../api.js';
-import { Badge, Card, GlowButton, Icons, SectionHeader, cn, useConfirm, useToast } from '../../components/ui.jsx';
+import { Badge, Card, GlowButton, Icons, SectionHeader, Select, cn, useConfirm, useToast } from '../../components/ui.jsx';
 
 function EggDetail({ egg, onBack }) {
   const [data, setData] = useState(null);
@@ -112,11 +112,104 @@ function EggDetail({ egg, onBack }) {
   );
 }
 
+// ── Import a Pterodactyl egg (paste JSON or upload a .json file) ──
+function ImportEggModal({ nests, onClose, onDone }) {
+  const [nestId, setNestId] = useState('');
+  const [jsonText, setJsonText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const toast = useToast();
+  const fileRef = useRef(null);
+
+  function onFile(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => setJsonText(String(reader.result || ''));
+    reader.readAsText(f);
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!nestId) { setError('Pick a nest first'); return; }
+    if (!jsonText.trim()) { setError('Paste the egg JSON or upload a file'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      await api.admin.importEgg(nestId, jsonText);
+      toast.push('Egg imported');
+      onDone();
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}
+    >
+      <Card className="w-full max-w-lg" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="font-semibold text-white">Import Pterodactyl Egg</h3>
+          <button onClick={onClose} disabled={busy} className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-white" aria-label="Close">
+            <Icons.Close className="h-4 w-4" />
+          </button>
+        </div>
+        <form onSubmit={submit} className="space-y-4">
+          <p className="text-xs text-zinc-500">
+            Paste the contents of a Pterodactyl egg export (<span className="font-mono">.json</span> — the file you get from
+            <span className="font-mono"> Admin → Nests → Egg → Export</span> on any Pterodactyl panel) or upload it. The egg
+            will be created in the selected nest and works like any built-in egg.
+          </p>
+          <div>
+            <label className="label">Destination nest</label>
+            <Select value={nestId} onChange={(e) => setNestId(e.target.value)} className="w-full">
+              <option value="">Select a nest…</option>
+              {nests.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
+            </Select>
+          </div>
+          <div>
+            <label className="label">Egg JSON</label>
+            <textarea
+              className="input min-h-[180px] font-mono text-xs"
+              value={jsonText}
+              onChange={(e) => setJsonText(e.target.value)}
+              placeholder='{
+  "meta": { "version": "PTDL_v2" },
+  "name": "My Egg",
+  "startup": "java -jar {{JARFILE}}",
+  "docker_images": { "ghcr.io/parkervcp/yolks:java_21": "ghcr.io/parkervcp/yolks:java_21" },
+  "scripts": { "installation": { "script": "apt update && apt install -y curl", "container": "ghcr.io/parkervcp/yolks:debian", "entrypoint": "bash" } },
+  "variables": []
+}'
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <button type="button" className="btn-ghost" onClick={() => fileRef.current?.click()} disabled={busy}>
+              <Icons.Upload className="h-4 w-4" /> Upload .json file
+            </button>
+            <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={onFile} />
+            {jsonText && <span className="text-xs text-emerald-400">✓ JSON loaded</span>}
+          </div>
+          {error && <p className="text-sm text-red-400">{error}</p>}
+          <div className="flex gap-2">
+            <button type="button" className="btn-ghost flex-1" onClick={onClose} disabled={busy}>Cancel</button>
+            <button className="btn-primary flex-1" disabled={busy || !nestId || !jsonText.trim()}>{busy ? 'Importing…' : 'Import Egg'}</button>
+          </div>
+        </form>
+      </Card>
+    </div>
+  );
+}
+
 export default function Nests() {
   const toast = useToast();
   const [nests, setNests] = useState([]);
   const [selectedEgg, setSelectedEgg] = useState(null);
   const [showNest, setShowNest] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [nestName, setNestName] = useState('');
   const [nestDesc, setNestDesc] = useState('');
   const [error, setError] = useState('');
@@ -162,9 +255,22 @@ export default function Nests() {
       <SectionHeader
         title="Nests"
         sub="Nests group eggs together. Eggs define how servers run."
-        action={<GlowButton onClick={() => setShowNest(!showNest)}><Icons.Plus className="h-4 w-4" /> New Nest</GlowButton>}
+        action={
+          <div className="flex gap-2">
+            <GlowButton onClick={() => setShowImport(true)}><Icons.Upload className="h-4 w-4" /> Import Egg</GlowButton>
+            <GlowButton onClick={() => setShowNest(!showNest)}><Icons.Plus className="h-4 w-4" /> New Nest</GlowButton>
+          </div>
+        }
       />
       {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+
+      {showImport && (
+        <ImportEggModal
+          nests={nests}
+          onClose={() => setShowImport(false)}
+          onDone={() => { setShowImport(false); toast.push('Egg imported'); load(); }}
+        />
+      )}
 
       {showNest && (
         <Card className="mb-4">
