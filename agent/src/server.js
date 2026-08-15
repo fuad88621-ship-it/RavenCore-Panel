@@ -303,7 +303,7 @@ app.get('/servers/:uuid/install-log', async (req, res) => {
 
 app.post('/servers/:uuid/reinstall', async (req, res) => {
   try {
-    const { image, install_command } = req.body;
+    const { image, install_command, env } = req.body;
     const spec = await docker.getContainerInfo(req.params.uuid);
     const container = await docker.findContainer(req.params.uuid);
     if (container) {
@@ -314,6 +314,8 @@ app.post('/servers/:uuid/reinstall', async (req, res) => {
       ...spec,
       image: image || spec.image,
       install_command: install_command || spec.install_command,
+      // Prefer the env sent by the panel (current DB values) over the spec.
+      env: env || spec.env,
     });
     res.json({ ok: true });
   } catch (e) {
