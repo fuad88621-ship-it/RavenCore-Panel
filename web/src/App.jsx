@@ -349,7 +349,6 @@ function AlertsBell() {
 
 function Layout({ children }) {
   const { user, logout } = useAuth();
-  const { toasts, dismiss } = useToasts();
   const location = useLocation();
 
   const nav = [
@@ -397,7 +396,6 @@ function Layout({ children }) {
           </AnimatePresence>
         </main>
       </div>
-      <Toasts toasts={toasts} onDismiss={dismiss} />
     </div>
   );
 }
@@ -525,6 +523,7 @@ export default function App() {
         </SettingsContext.Provider>
       </AuthContext.Provider>
       </ConfirmProvider>
+      <Toasts toasts={toastApi.toasts} onDismiss={toastApi.dismiss} />
     </ToastContext.Provider>
   );
 }
