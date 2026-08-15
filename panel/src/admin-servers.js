@@ -1,9 +1,105 @@
 import { q, q1, genUuid, genIdentifier } from './db.js';
 import crypto from 'node:crypto';
+import { lookup } from 'node:dns/promises';
 import { requireAdmin } from './auth.js';
 import { agentRequest, agentRequestFor, agentRequestStream } from './agent-client.js';
 import { config, agentInternalUrl } from './config.js';
 import { deleteDatabase } from './admin-databases.js';
+
+// ── Automatic game-port proxying ────────────────────────────────────
+// When a remote node's FQDN points back at the panel host (e.g. the console
+// WS is routed through the panel's caddy), game ports on that node are NOT
+// reachable via the FQDN — the panel must forward them. This creates a socat
+// proxy container on the panel host for each game port, so the address shown
+// in the panel (node_fqdn:port) actually works. Fully automatic: no manual
+// proxy setup needed when adding nodes on other VPSes.
+
+// Does this node need its game ports proxied through the panel host?
+async function needsPortProxy(node) {
+  try {
+    const isLocal = node.name === config.node.name || node.fqdn === config.node.fqdn;
+    if (isLocal) return false; // local node — ports are already on this host
+    // If the node's FQDN resolves to the panel's own public IP, the node is
+    // behind the panel → proxy needed. Otherwise the FQDN points at the node
+    // itself and players connect directly.
+    const nodeIp = (await lookup(node.fqdn)).address;
+    const localIp = (await agentRequest('/host/ip')).ip;
+    return !!nodeIp && !!localIp && nodeIp === localIp;
+  } catch (e) {
+    console.error('[panel] proxy check failed:', e.message);
+    return false;
+  }
+}
+
+// Create a proxy on the panel host for a game port on a remote node.
+async function ensurePortProxy(node, port) {
+  if (!port) return;
+  try {
+    if (!await needsPortProxy(node)) return;
+    // The node's real IP (its FQDN points at the panel, so ask the agent).
+    const realIp = (await agentRequest('/host/ip', 'GET', undefined, { node })).ip;
+    if (!realIp) return;
+    await agentRequest('/proxy', 'POST', { port, target: `${realIp}:${port}` });
+    console.log(`[panel] proxy ${port} -> ${realIp}:${port} created`);
+  } catch (e) {
+    console.error('[panel] proxy setup failed:', e.message);
+  }
+}
+
+// Remove the proxy for a port (server deleted / moved off the node).
+export async function removePortProxy(port) {
+  if (!port) return;
+  try {
+    await agentRequest(`/proxy/${port}`, 'DELETE');
+  } catch (e) {
+    console.error('[panel] proxy removal failed:', e.message);
+  }
+}
+
+// Ports that must not be assigned to a server on `node`: ports used by
+// servers on nodes sharing the same host (same fqdn), plus — when the node's
+// FQDN points at the panel host (needs proxying) — every port already bound
+// on the panel host (local node servers + existing proxies).
+async function getExcludedPorts(nodeId) {
+  const excluded = new Set();
+  const sameHost = await q(
+    `SELECT a2.port FROM allocations a2
+     JOIN servers s ON s.id = a2.server_id
+     JOIN nodes n ON n.id = a2.node_id
+     WHERE n.fqdn = (SELECT fqdn FROM nodes WHERE id = $1) AND a2.port IS NOT NULL`,
+    [nodeId]
+  );
+  for (const r of sameHost) excluded.add(r.port);
+  const node = await q1(`SELECT * FROM nodes WHERE id = $1`, [nodeId]);
+  if (node && await needsPortProxy(node)) {
+    const localAllocs = await q(
+      `SELECT a.port FROM allocations a JOIN servers s ON s.id = a.server_id
+       WHERE s.node_id = (SELECT id FROM nodes WHERE name = $1) AND a.port IS NOT NULL`,
+      [config.node.name]
+    );
+    for (const r of localAllocs) excluded.add(r.port);
+    try {
+      const { proxies } = await agentRequest('/proxy');
+      for (const p of proxies || []) if (p.port) excluded.add(p.port);
+    } catch {}
+  }
+  return [...excluded];
+}
+
+// Pick free allocations for a node, excluding ports that would collide on the
+// panel host or on nodes sharing the same host.
+export async function pickFreeAllocations(nodeId, limit) {
+  const excluded = await getExcludedPorts(nodeId);
+  const exclClause = excluded.length
+    ? `AND a.port NOT IN (${excluded.map((_, i) => `$${i + 2}`).join(',')})`
+    : '';
+  return q(
+    `SELECT a.* FROM allocations a
+     WHERE a.node_id = $1 AND a.server_id IS NULL ${exclClause}
+     ORDER BY a.port LIMIT $${excluded.length + 2}`,
+    [nodeId, ...excluded, limit]
+  );
+}
 
 async function logActivity(serverId, userId, action, metadata = {}) {
   try {
@@ -265,26 +361,22 @@ export async function adminServerRoutes(fastify) {
         claimed++;
       }
     }
-    // Fill remaining allocation slots from free ports on the node. Exclude
+    // Fill remaining allocation slots from free ports on the node. Excludes
     // ports used by servers on other nodes sharing the same host (same fqdn)
-    // so two nodes on one VPS can't collide on the physical port.
+    // and — for nodes behind the panel — ports already bound on the panel
+    // host, so proxies and local servers can't collide.
     if (claimed < allocCount) {
-      const free = await q(
-        `SELECT a.* FROM allocations a
-         WHERE a.node_id = $1 AND a.server_id IS NULL
-         AND a.port NOT IN (
-           SELECT a2.port FROM allocations a2
-           JOIN servers s ON s.id = a2.server_id
-           JOIN nodes n ON n.id = a2.node_id
-           WHERE n.fqdn = (SELECT fqdn FROM nodes WHERE id = $1)
-             AND a2.port IS NOT NULL
-         )
-         ORDER BY a.port LIMIT $2`,
-        [node.id, allocCount - claimed]
-      );
+      const free = await pickFreeAllocations(node.id, allocCount - claimed);
       for (const a of free) {
         await q(`UPDATE allocations SET server_id = $1 WHERE id = $2`, [server.id, a.id]);
       }
+    }
+
+    // Auto-proxy game ports for remote nodes behind the panel (so the
+    // displayed node_fqdn:port address actually works).
+    const claimedAllocs = await q(`SELECT port FROM allocations WHERE server_id = $1`, [server.id]);
+    for (const a of claimedAllocs) {
+      ensurePortProxy(node, a.port).catch(() => {});
     }
 
     // Tell the agent to build the container
@@ -387,6 +479,9 @@ export async function adminServerRoutes(fastify) {
     for (const db of dbs) {
       try { await deleteDatabase(db); } catch (e) { console.error('[admin] db cleanup failed:', e.message); }
     }
+    // Free allocations + remove any auto-created game-port proxies.
+    const allocs = await q(`SELECT port FROM allocations WHERE server_id = $1`, [server.id]);
+    for (const a of allocs) removePortProxy(a.port).catch(() => {});
     await q(`UPDATE allocations SET server_id = NULL WHERE server_id = $1`, [server.id]);
     await q(`DELETE FROM servers WHERE id = $1`, [server.id]);
     return { ok: true };
@@ -423,24 +518,21 @@ export async function adminServerRoutes(fastify) {
       setP('stopping', 5);
       try { await agentRequestFor(server.uuid, `/servers/${server.uuid}/power`, 'POST', { action: 'stop' }); } catch {}
 
-      // 2. Pick a free allocation on the destination node. Exclude ports that
-      // are in use by servers on OTHER nodes sharing the same host (same fqdn)
-      // — e.g. two nodes on one VPS with overlapping port ranges would
-      // otherwise collide on the physical port.
-      const free = await q1(
-        `SELECT a.* FROM allocations a
-         WHERE a.node_id = $1 AND a.server_id IS NULL
-         AND a.port NOT IN (
-           SELECT a2.port FROM allocations a2
-           JOIN servers s ON s.id = a2.server_id
-           JOIN nodes n ON n.id = a2.node_id
-           WHERE n.fqdn = (SELECT fqdn FROM nodes WHERE id = $1)
-             AND a2.port IS NOT NULL
-         )
-         ORDER BY a.port LIMIT 1`,
-        [dest.id]
-      );
+      // 2. Pick a free allocation on the destination node. Excludes ports
+      // that would collide on the panel host or on nodes sharing the same
+      // host (e.g. two nodes on one VPS with overlapping port ranges).
+      const freeAllocs = await pickFreeAllocations(dest.id, 1);
+      const free = freeAllocs[0] || null;
       const newPort = free ? free.port : null;
+
+      // Auto-proxy the new port on the destination (if it's a remote node
+      // behind the panel) and remove the old proxy on the source.
+      if (newPort) ensurePortProxy(dest, newPort).catch(() => {});
+      const oldPort = await q1(
+        `SELECT a.port FROM allocations a WHERE a.node_id = $1 AND a.server_id = $2 LIMIT 1`,
+        [src.id, server.id]
+      );
+      if (oldPort?.port) removePortProxy(oldPort.port).catch(() => {});
 
       // 3. Create the container on the destination (no install, stays offline).
       // Re-render the startup command with the NEW port — the old command has
@@ -590,21 +682,9 @@ export async function adminServerRoutes(fastify) {
     }
 
     // The destination must have a free allocation (excluding ports used by
-    // other nodes on the same host) — otherwise the server would end up with
-    // no port after the move.
-    const freeAlloc = await q1(
-      `SELECT a.id FROM allocations a
-       WHERE a.node_id = $1 AND a.server_id IS NULL
-       AND a.port NOT IN (
-         SELECT a2.port FROM allocations a2
-         JOIN servers s ON s.id = a2.server_id
-         JOIN nodes n ON n.id = a2.node_id
-         WHERE n.fqdn = (SELECT fqdn FROM nodes WHERE id = $1)
-           AND a2.port IS NOT NULL
-       )
-       ORDER BY a.port LIMIT 1`,
-      [dest.id]
-    );
+    // other nodes on the same host or bound on the panel host) — otherwise the
+    // server would end up with no port after the move.
+    const freeAlloc = (await pickFreeAllocations(dest.id, 1))[0];
     if (!freeAlloc) {
       return reply.code(400).send({ error: 'Destination node has no free allocations. Add ports to it first (Admin → Nodes → Allocations).' });
     }
