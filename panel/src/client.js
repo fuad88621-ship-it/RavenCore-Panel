@@ -273,8 +273,8 @@ export async function clientRoutes(fastify) {
   fastify.get('/api/client/servers/:id/install-log', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    const log = await agentRequestFor(server.uuid, `/servers/${server.uuid}/install-log`, 'GET');
-    return { log };
+    const res = await agentRequestFor(server.uuid, `/servers/${server.uuid}/install-log`, 'GET');
+    return { log: (res && res.log) || '' };
   });
 
   // Plugins (Modrinth marketplace)
