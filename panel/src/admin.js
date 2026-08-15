@@ -255,15 +255,17 @@ export async function adminRoutes(fastify) {
     const node = await q1(`SELECT * FROM nodes WHERE id = $1`, [req.params.id]);
     if (!node) return reply.code(404).send({ error: 'Node not found' });
     if (!from || !to || to < from) return reply.code(400).send({ error: 'Valid from/to range required' });
-    if (to - from > 1000) return reply.code(400).send({ error: 'Max 1000 ports per range' });
-    let added = 0;
-    for (let p = from; p <= to; p++) {
-      try {
-        await q(`INSERT INTO allocations (node_id, ip, port) VALUES ($1,$2,$3) ON CONFLICT (node_id, port) DO NOTHING`, [node.id, ip || '0.0.0.0', p]);
-        added++;
-      } catch {}
-    }
-    return { added };
+    if (from < 1 || to > 65535) return reply.code(400).send({ error: 'Ports must be between 1 and 65535' });
+    // Bulk insert with generate_series — a single query even for a full
+    // 1-65535 range (the old per-port loop was slow for large ranges).
+    const res = await q(
+      `INSERT INTO allocations (node_id, ip, port)
+       SELECT $1, $2, g FROM generate_series($3::int, $4::int) AS g
+       ON CONFLICT (node_id, port) DO NOTHING
+       RETURNING id`,
+      [node.id, ip || '0.0.0.0', from, to]
+    );
+    return { added: res.length };
   });
 
   fastify.delete('/api/admin/allocations/:id', { preHandler: requireAdmin }, async (req, reply) => {
