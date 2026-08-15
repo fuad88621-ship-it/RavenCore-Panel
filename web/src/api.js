@@ -121,6 +121,7 @@ export const api = {
     eggs: (nestId) => req(`/api/admin/nests/${nestId}/eggs`),
     egg: (id) => req(`/api/admin/eggs/${id}`),
     createEgg: (nestId, body) => req(`/api/admin/nests/${nestId}/eggs`, { method: 'POST', body: JSON.stringify(body) }),
+    importEgg: (nestId, eggJson) => req('/api/admin/eggs/import', { method: 'POST', body: JSON.stringify({ nest_id: nestId, egg_json: eggJson }) }),
     updateEgg: (id, body) => req(`/api/admin/eggs/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     deleteEgg: (id) => req(`/api/admin/eggs/${id}`, { method: 'DELETE' }),
     createEggVariable: (eggId, body) => req(`/api/admin/eggs/${eggId}/variables`, { method: 'POST', body: JSON.stringify(body) }),
