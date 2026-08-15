@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Badge, Card, GlowButton, Icons, SectionHeader, cn, useConfirm } from '../../components/ui.jsx';
+import { Badge, Card, GlowButton, Icons, SectionHeader, cn, useConfirm, useToast } from '../../components/ui.jsx';
 
 export default function Users() {
+  const toast = useToast();
   const [users, setUsers] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ username: '', email: '', password: '', root_admin: false });
@@ -26,6 +27,7 @@ export default function Users() {
       await api.admin.createUser(form);
       setForm({ username: '', email: '', password: '', root_admin: false });
       setShowForm(false);
+      toast.push('User created');
       load();
     } catch (err) {
       setError(err.message);
