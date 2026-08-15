@@ -45,6 +45,7 @@ export const api = {
   alertsRead: () => req('/api/client/alerts/read', { method: 'POST' }),
   installLog: (id) => req(`/api/client/servers/${id}/install-log`),
   pluginsSearch: (id, q) => req(`/api/client/servers/${id}/plugins/search?q=${encodeURIComponent(q)}`),
+  pluginInfo: (id, projectId) => req(`/api/client/servers/${id}/plugins/${encodeURIComponent(projectId)}`),
   plugins: (id) => req(`/api/client/servers/${id}/plugins`),
   pluginInstall: (id, projectId) => req(`/api/client/servers/${id}/plugins/install`, { method: 'POST', body: JSON.stringify({ project_id: projectId }) }),
   pluginDelete: (id, filename) => req(`/api/client/servers/${id}/plugins/${encodeURIComponent(filename)}`, { method: 'DELETE' }),
