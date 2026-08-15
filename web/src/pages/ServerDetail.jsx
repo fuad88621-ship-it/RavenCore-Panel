@@ -1940,6 +1940,24 @@ export default function ServerDetail() {
   // Plugins (Modrinth marketplace) only makes sense for Minecraft eggs.
   const isMinecraft = /minecraft/i.test(server?.egg_name || '');
 
+  // Live Minecraft player count for the header.
+  const [mc, setMc] = useState(null);
+  useEffect(() => {
+    if (!isMinecraft || !server?.id) return;
+    let alive = true;
+    const tick = async () => {
+      try {
+        const d = await api.mcPing(server.id);
+        if (alive) setMc(d);
+      } catch {
+        if (alive) setMc(null);
+      }
+    };
+    tick();
+    const t = setInterval(tick, 15000);
+    return () => { alive = false; clearInterval(t); };
+  }, [server?.id, isMinecraft]);
+
   // Subuser permission gating: perms is null for owner/admin (all tabs),
   // an array of granted permissions for subusers.
   const can = (p) => !perms || perms.includes(p);
@@ -2035,6 +2053,11 @@ export default function ServerDetail() {
           </h1>
           <p className="text-xs text-zinc-500">
             {server.egg_name} · {server.memory_mb}MB · {server.cpu}% CPU · <span className="font-mono">{server.identifier}</span>
+            {isMinecraft && mc && mc.online && (
+              <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-400 ring-1 ring-emerald-500/20">
+                👥 {mc.players}/{mc.max_players} online
+              </span>
+            )}
           </p>
         </div>
       </div>
