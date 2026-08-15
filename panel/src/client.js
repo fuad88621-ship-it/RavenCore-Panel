@@ -378,8 +378,8 @@ export async function clientRoutes(fastify) {
 
   fastify.delete('/api/client/databases/:id', { preHandler: requireAuth }, async (req, reply) => {
     const record = await q1(
-      `SELECT d.* FROM server_databases d JOIN servers s ON s.id = d.server_id WHERE d.id = $1 AND s.user_id = $2`,
-      [req.params.id, req.user.id]
+      `SELECT d.* FROM server_databases d JOIN servers s ON s.id = d.server_id WHERE d.id = $1 AND (s.user_id = $2 OR $3)`,
+      [req.params.id, req.user.id, req.user.root_admin]
     );
     if (!record) return reply.code(404).send({ error: 'Database not found' });
     return deleteDatabase(record);
@@ -387,8 +387,8 @@ export async function clientRoutes(fastify) {
 
   fastify.post('/api/client/databases/:id/rotate', { preHandler: requireAuth }, async (req, reply) => {
     const record = await q1(
-      `SELECT d.* FROM server_databases d JOIN servers s ON s.id = d.server_id WHERE d.id = $1 AND s.user_id = $2`,
-      [req.params.id, req.user.id]
+      `SELECT d.* FROM server_databases d JOIN servers s ON s.id = d.server_id WHERE d.id = $1 AND (s.user_id = $2 OR $3)`,
+      [req.params.id, req.user.id, req.user.root_admin]
     );
     if (!record) return reply.code(404).send({ error: 'Database not found' });
     const updated = await rotateDatabasePassword(record);
@@ -458,6 +458,11 @@ export async function clientRoutes(fastify) {
       await agentRequestFor(server.uuid, `/servers/${server.uuid}`, 'DELETE');
     } catch (e) {
       console.error('[client] agent delete failed:', e.message);
+    }
+    // Drop the server's MariaDB databases (rows cascade, MySQL dbs don't).
+    const dbs = await q(`SELECT * FROM server_databases WHERE server_id = $1`, [server.id]);
+    for (const db of dbs) {
+      try { await deleteDatabase(db); } catch (e) { console.error('[client] db cleanup failed:', e.message); }
     }
     await q(`UPDATE allocations SET server_id = NULL WHERE server_id = $1`, [server.id]);
     await q(`DELETE FROM servers WHERE id = $1`, [server.id]);
