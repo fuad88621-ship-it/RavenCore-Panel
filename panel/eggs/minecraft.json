@@ -1,29 +1,31 @@
 {
-    "_comment": "Minecraft Paper egg for RavenCore",
+    "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PTERODACTYL PANEL - PTERODACTYL.IO",
     "meta": {
         "version": "PTDL_v2",
         "update_url": null
     },
-    "exported_at": "2024-01-01T00:00:00-00:00",
+    "exported_at": "2024-02-13T17:26:13+0000",
     "name": "Minecraft (Paper)",
-    "author": "raven",
-    "description": "Minecraft Java server running Paper. Supports Vanilla, Paper, and Spigot.",
+    "author": "sneaky@sneakyhub.com",
+    "description": "Minecraft Paper server (optimized, Aikar's flags).",
     "features": null,
     "docker_images": {
-        "ghcr.io/parkervcp/yolks:java_25": "ghcr.io/parkervcp/yolks:java_25"
+        "ghcr.io\/parkervcp\/yolks:java_25": "ghcr.io\/parkervcp\/yolks:java_25",
+        "ghcr.io\/parkervcp\/yolks:java_21": "ghcr.io\/parkervcp\/yolks:java_21",
+        "ghcr.io\/parkervcp\/yolks:java_17": "ghcr.io\/parkervcp\/yolks:java_17"
     },
     "file_denylist": [],
     "startup": "PORT={{SERVER_PORT}}\nif [ -f server.properties ]; then sed -i \"s/^server-port=.*/server-port=${PORT}/\" server.properties; else echo \"server-port=${PORT}\" > server.properties; fi\njava -Xms128M -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true -Dterminal.jline=false -Dterminal.ansi=true -jar {{SERVER_JAR}}",
     "config": {
         "files": "{}",
-        "startup": "{\"done\": \"Done\"}",
+        "startup": "{\r\n    \"done\": \"Done\"\r\n}",
         "logs": "{}",
         "stop": "^C"
     },
     "scripts": {
         "installation": {
             "script": "#!/bin/bash\r\n# Paper Installation Script (Fill API v3)\r\n\r\napt-get update -qq\r\napt-get install -y -qq curl jq\r\n\r\nif [ ! -d /mnt/server ]; then\r\n    mkdir -p /mnt/server\r\nfi\r\n\r\ncd /mnt/server\r\n\r\nif [ -z \"${VERSION}\" ]; then\r\n    VERSION=\"latest\"\r\nfi\r\n\r\nif [ -z \"${BUILD}\" ]; then\r\n    BUILD=\"latest\"\r\nfi\r\n\r\nif [ -z \"${SERVER_JAR}\" ]; then\r\n    SERVER_JAR=\"server.jar\"\r\nfi\r\n\r\n# Resolve \"latest\" to the newest version\r\nif [ \"${VERSION}\" = \"latest\" ]; then\r\n    VERSION=$(curl -s https://fill.papermc.io/v3/projects/paper | jq -r '.versions | to_entries[0].value[0]')\r\nfi\r\n\r\n# Resolve \"latest\" to the newest STABLE build\r\nif [ \"${BUILD}\" = \"latest\" ]; then\r\n    BUILD=$(curl -s https://fill.papermc.io/v3/projects/paper/versions/${VERSION}/builds | jq -r '[.[] | select(.channel == \"STABLE\")][-1].id')\r\nfi\r\n\r\n# Get the download URL and fetch the jar\r\nURL=$(curl -s https://fill.papermc.io/v3/projects/paper/versions/${VERSION}/builds | jq -r \"[.[] | select(.id == ${BUILD})][0].downloads | to_entries[0].value.url\")\r\ncurl -o ${SERVER_JAR} \"${URL}\"\r\n\r\n# Accept the EULA so the server can start\r\necho \"eula=true\" > eula.txt\r\n\r\necho \"Paper ${VERSION} build ${BUILD} downloaded\"",
-            "container": "ghcr.io/parkervcp/yolks:debian",
+            "container": "ghcr.io\/parkervcp\/yolks:debian",
             "entrypoint": "bash"
         }
     },
