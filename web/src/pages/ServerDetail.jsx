@@ -111,10 +111,33 @@ function ConsoleTab({ server, resetKey }) {
     let resizeObserver;
     let everConnected = false;
     let attempt = 0;
+    let lastLogLen = 0;
 
     function setConn(v) { if (!disposed) setConnected(v); }
     function setErr(v) { if (!disposed) setError(v); }
     function setReconn(v) { if (!disposed) setReconnecting(v); }
+
+    // Fallback for nodes without TLS: the browser blocks ws:// from an https
+    // page, so the live console can't connect. Poll the install log instead
+    // so installs still show output (works for every node, TLS or not).
+    async function pollInstallLog() {
+      if (disposed) return;
+      try {
+        const res = await api.installLog(server.id);
+        const raw = (res && res.log) || '';
+        const log = typeof raw === 'string' ? raw : (raw && raw.log) || '';
+        if (log.length > lastLogLen) {
+          term.write(log.slice(lastLogLen));
+          lastLogLen = log.length;
+        }
+      } catch {}
+    }
+    function startPolling() {
+      if (disposed) return;
+      clearInterval(pollId);
+      pollId = setInterval(pollInstallLog, 2000);
+      pollInstallLog();
+    }
 
     function scheduleReconnect() {
       if (disposed) return;
@@ -148,11 +171,21 @@ function ConsoleTab({ server, resetKey }) {
         };
         ws.onmessage = (ev) => term.write(ev.data);
         ws.onclose = () => {
-          setConn(false);
-          term.writeln('\r\n\x1b[31m● Disconnected. Reconnecting…\x1b[0m');
-          scheduleReconnect();
+          if (everConnected) {
+            setConn(false);
+            term.writeln('\r\n\x1b[31m● Disconnected. Reconnecting…\x1b[0m');
+            scheduleReconnect();
+          }
+          // If we never connected, onerror already switched to install-log polling.
         };
-        ws.onerror = () => { /* onclose follows */ };
+        ws.onerror = () => {
+          if (!everConnected) {
+            // Socket blocked (e.g. ws:// from an https page on a node without
+            // TLS). Fall back to polling the install log so installs still show.
+            setErr('Live console unavailable (insecure socket blocked). Showing install log…');
+            startPolling();
+          }
+        };
       } catch (e) {
         setErr(e.message);
         scheduleReconnect();
