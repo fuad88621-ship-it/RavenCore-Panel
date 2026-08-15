@@ -137,11 +137,156 @@ function AllocationsTab({ node }) {
   );
 }
 
+// ── Cleanup modal: 3-step confirmation (preview → confirm → type CLEANUP) ──
+function CleanupModal({ node, onClose, onDone }) {
+  const [step, setStep] = useState(1);
+  const [days, setDays] = useState(7);
+  const [servers, setServers] = useState(null);
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const toast = useToast();
+
+  // Load the preview whenever the days value changes (debounced by the button).
+  async function loadPreview() {
+    setError('');
+    setBusy(true);
+    try {
+      const d = await api.admin.nodeCleanupPreview(node.id, days);
+      setServers(d.servers);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => { loadPreview(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function run() {
+    setBusy(true);
+    setError('');
+    try {
+      const d = await api.admin.nodeCleanup(node.id, days, typed);
+      toast.push(`Deleted ${d.deleted} inactive server${d.deleted === 1 ? '' : 's'}`);
+      onDone();
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  }
+
+  const count = servers ? servers.length : 0;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}
+    >
+      <Card className="w-full max-w-lg" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="font-semibold text-white">Cleanup {node.name}</h3>
+          <button onClick={onClose} disabled={busy} className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-white" aria-label="Close">
+            <Icons.Close className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Step indicator */}
+        <div className="mb-4 flex items-center gap-2">
+          {[1, 2, 3].map((s) => (
+            <div key={s} className={cn('flex-1 rounded-full py-1 text-center text-[11px] font-semibold', step >= s ? 'bg-red-500/20 text-red-200' : 'bg-white/[0.05] text-zinc-500')}>
+              {s === 1 ? 'Review' : s === 2 ? 'Confirm' : 'Type CLEANUP'}
+            </div>
+          ))}
+        </div>
+
+        {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+
+        {step === 1 && (
+          <div className="space-y-4">
+            <p className="text-sm text-zinc-400">
+              Find servers on <b className="text-white">{node.name}</b> that are <b className="text-white">offline</b> and have had no activity for the given number of days. They will be <b className="text-red-300">permanently deleted</b> (files, databases, backups).
+            </p>
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <label className="label">Inactive for (days)</label>
+                <NumberInput min={1} max={365} value={days} onChange={(n) => { setDays(n); setServers(null); }} />
+              </div>
+              <button className="btn-ghost" onClick={loadPreview} disabled={busy}>{busy ? 'Scanning…' : 'Scan'}</button>
+            </div>
+            {servers && (
+              <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                {count === 0 ? (
+                  <p className="py-4 text-center text-sm text-zinc-500">No inactive servers found. 🎉</p>
+                ) : (
+                  servers.map((s) => (
+                    <div key={s.id} className="flex items-center justify-between gap-2 rounded-lg bg-white/[0.03] px-3 py-2 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-white">{s.name}</p>
+                        <p className="font-mono text-[11px] text-zinc-500">{s.identifier}</p>
+                      </div>
+                      <span className="shrink-0 text-xs text-zinc-500">last active {new Date(s.last_active).toLocaleDateString()}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button className="btn-ghost flex-1" onClick={onClose} disabled={busy}>Cancel</button>
+              <button className="btn-primary flex-1" onClick={() => setStep(2)} disabled={count === 0 || busy}>Continue ({count})</button>
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
+              <p className="text-sm text-red-100">
+                You are about to <b>permanently delete {count} server{count === 1 ? '' : 's'}</b> on {node.name}.
+              </p>
+              <p className="mt-2 text-xs text-red-200/70">
+                This removes the containers, all files, all databases, and all backups. <b>This cannot be undone.</b>
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button className="btn-ghost flex-1" onClick={() => setStep(1)} disabled={busy}>Back</button>
+              <button className="btn-danger flex-1" onClick={() => setStep(3)} disabled={busy}>I understand — continue</button>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="space-y-4">
+            <p className="text-sm text-zinc-400">
+              Type <b className="font-mono text-red-300">CLEANUP</b> to permanently delete {count} server{count === 1 ? '' : 's'}.
+            </p>
+            <input
+              className="input font-mono"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder="CLEANUP"
+              autoFocus
+              disabled={busy}
+            />
+            <div className="flex gap-2">
+              <button className="btn-ghost flex-1" onClick={() => setStep(2)} disabled={busy}>Back</button>
+              <button className="btn-danger flex-1" onClick={run} disabled={typed.trim() !== 'CLEANUP' || busy}>
+                {busy ? 'Deleting…' : `Delete ${count} server${count === 1 ? '' : 's'}`}
+              </button>
+            </div>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 function NodeDetail({ node, onBack }) {
   const [tab, setTab] = useState('settings');
   const [form, setForm] = useState({ ...node });
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [showCleanup, setShowCleanup] = useState(false);
   const savedTimer = useRef(null);
   const toast = useToast();
 
@@ -248,7 +393,21 @@ function NodeDetail({ node, onBack }) {
             <button className="btn-primary" onClick={save}>Save changes</button>
             {saved && <span className="self-center text-sm text-emerald-400">Saved ✓</span>}
           </div>
+
+          <Card className="rounded-2xl border border-red-500/20 bg-red-500/10 p-5">
+            <h3 className="mb-1 text-sm font-semibold text-red-200">Cleanup inactive servers</h3>
+            <p className="mb-4 text-xs text-red-200/70">Permanently delete servers on this node that have been offline and inactive for a set number of days. Requires 3 confirmations.</p>
+            <button className="btn-danger" onClick={() => setShowCleanup(true)}>Cleanup inactive servers…</button>
+          </Card>
         </div>
+      )}
+
+      {showCleanup && (
+        <CleanupModal
+          node={node}
+          onClose={() => setShowCleanup(false)}
+          onDone={() => { setShowCleanup(false); toast.push('Cleanup complete'); }}
+        />
       )}
     </div>
   );
