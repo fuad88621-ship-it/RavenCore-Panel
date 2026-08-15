@@ -42,7 +42,7 @@ function CreateServerForm({ onCreated }) {
     user_id: '', node_id: '', nest_id: '', egg_id: '',
     name: '', description: '',
     memory_mb: 1024, cpu: 150, cpu_pinning: '', disk_mb: 3072, swap_mb: 0, io: 500,
-    databases: 1, allocations: 1, backups: 0,
+    databases: 1, allocations: 1, backups: 3,
     docker_image: '', skip_install: false, start_on_install: false, oom_killer: true,
     default_allocation_id: '', additional_allocation_ids: [],
   });
