@@ -528,11 +528,21 @@ export function useToasts() {
     const timer = setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
       timers.current = timers.current.filter((t) => t !== timer);
-    }, 4000);
+    }, 2500);
     timers.current.push(timer);
   };
   const dismiss = (id) => setToasts((prev) => prev.filter((t) => t.id !== id));
   return { toasts, push, dismiss };
+}
+
+// Copy text to the clipboard and show a toast confirmation.
+export function useCopy() {
+  const toast = useToast();
+  return (text, message = 'Copied to clipboard') => {
+    navigator.clipboard?.writeText(text)
+      .then(() => toast.push(message))
+      .catch(() => {});
+  };
 }
 
 // ── In-app confirm dialog (replaces native window.confirm) ──
