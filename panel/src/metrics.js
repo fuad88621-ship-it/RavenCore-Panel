@@ -25,17 +25,34 @@ export function stopMetricsSampler() {
 
 async function sampleAll() {
   try {
-    const servers = await q(`SELECT id, uuid, name, memory_mb, cpu FROM servers`);
+    // Only sample servers that are running/installing — offline/suspended
+    // servers don't consume resources, so skip them (big win at scale).
+    const servers = await q(
+      `SELECT s.id, s.uuid, s.name, s.memory_mb, s.cpu, s.node_id
+       FROM servers s WHERE s.status IN ('running', 'installing')`
+    );
+    // Group by node and fetch ALL resources in ONE agent call per node
+    // (instead of one HTTP request per server — a 500-server host would
+    // otherwise hammer the agent 500 times every 30s).
+    const byNode = {};
     for (const s of servers) {
+      (byNode[s.node_id] = byNode[s.node_id] || []).push(s);
+    }
+    for (const [nodeId, list] of Object.entries(byNode)) {
       try {
-        const node = await serverNode(s.uuid);
-        const r = await agentRequest(`/servers/${s.uuid}/resources`, 'GET', null, { node });
-        await q(
-          `INSERT INTO server_metrics (server_id, cpu, memory_mb, disk_mb, network_rx_mb, network_tx_mb, running)
-           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-          [s.id, r.cpu || 0, r.memory_mb || 0, r.disk_mb || 0, r.network_rx_mb || 0, r.network_tx_mb || 0, !!r.running]
-        );
-        await checkAlerts(s, r);
+        const node = await q1(`SELECT * FROM nodes WHERE id = $1`, [nodeId]);
+        const res = await agentRequest('/host/resources', 'GET', null, { node });
+        const all = (res && res.servers) || {};
+        for (const s of list) {
+          const r = all[s.uuid];
+          if (!r) continue;
+          await q(
+            `INSERT INTO server_metrics (server_id, cpu, memory_mb, disk_mb, network_rx_mb, network_tx_mb, running)
+             VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+            [s.id, r.cpu || 0, r.memory_mb || 0, r.disk_mb || 0, r.network_rx_mb || 0, r.network_tx_mb || 0, !!r.running]
+          );
+          await checkAlerts(s, r);
+        }
       } catch (e) {
         // Node offline or server gone — skip quietly
       }
