@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Badge, Card, GlowButton, Icons, SectionHeader, cn, useConfirm } from '../../components/ui.jsx';
+import { Badge, Card, GlowButton, Icons, SectionHeader, cn, useConfirm, useToast } from '../../components/ui.jsx';
 
 function EggDetail({ egg, onBack }) {
   const [data, setData] = useState(null);
@@ -113,6 +113,7 @@ function EggDetail({ egg, onBack }) {
 }
 
 export default function Nests() {
+  const toast = useToast();
   const [nests, setNests] = useState([]);
   const [selectedEgg, setSelectedEgg] = useState(null);
   const [showNest, setShowNest] = useState(false);
@@ -137,6 +138,7 @@ export default function Nests() {
     try {
       await api.admin.createNest(nestName, nestDesc);
       setNestName(''); setNestDesc(''); setShowNest(false);
+      toast.push('Nest created');
       load();
     } catch (err) {
       setError(err.message);
