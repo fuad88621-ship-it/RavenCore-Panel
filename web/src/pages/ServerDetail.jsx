@@ -1704,12 +1704,13 @@ function NetworkTab({ server }) {
   );
 }
 
-// Strip basic markdown to plain text for the plugin body preview.
+// Strip basic markdown + HTML to plain text for the plugin body preview.
 function mdToText(md) {
   return (md || '')
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/<[^>]*>/g, ' ')
     .replace(/[#>*_`~|-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
