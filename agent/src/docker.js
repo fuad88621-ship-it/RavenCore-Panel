@@ -104,6 +104,11 @@ export async function createBot({ uuid, identifier, image, startup_command, inst
       name: `${name}-install`,
       User: 'root',
       WorkingDir: '/mnt/server',
+      // Pass the server's env vars (VERSION, BUILD, SERVER_JAR, …) so egg
+      // install scripts actually use the user's configured values — without
+      // this, VERSION was always empty and every install fell back to
+      // "latest" (e.g. Minecraft always downloaded the newest Paper build).
+      Env: Object.entries(env || {}).map(([k, v]) => `${k}=${v}`),
       HostConfig: {
         // Install scripts (apt/dpkg/pip/npm) need the default capabilities —
         // dropping ALL caps breaks apt's setgroups/seteuid and every egg's
