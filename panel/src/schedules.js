@@ -87,17 +87,37 @@ async function executeTask(sched, task) {
 async function getServerForUser(req, reply) {
   const server = await q1(`SELECT * FROM servers WHERE id = $1`, [req.params.id]);
   if (!server) { reply.code(404).send({ error: 'Server not found' }); return null; }
-  if (!req.user.root_admin && server.user_id !== req.user.id) {
-    reply.code(403).send({ error: 'Not your server' });
-    return null;
-  }
+  if (req.user.root_admin || server.user_id === req.user.id) return server;
+  const su = await q1(
+    `SELECT permissions FROM server_subusers WHERE server_id = $1 AND user_id = $2`,
+    [server.id, req.user.id]
+  );
+  if (!su) { reply.code(403).send({ error: 'Not your server' }); return null; }
+  server.subuser_permissions = su.permissions || [];
   return server;
+}
+
+function can(server, perm) {
+  if (!server.subuser_permissions) return true;
+  return server.subuser_permissions.includes(perm);
+}
+
+// Check a subuser's permission for a schedule/task that belongs to a server.
+async function canManage(req, reply, serverId, perm) {
+  if (req.user.root_admin) return true;
+  const owner = await q1(`SELECT user_id FROM servers WHERE id = $1`, [serverId]);
+  if (owner && owner.user_id === req.user.id) return true;
+  const su = await q1(`SELECT permissions FROM server_subusers WHERE server_id = $1 AND user_id = $2`, [serverId, req.user.id]);
+  if (su && (su.permissions || []).includes(perm)) return true;
+  reply.code(403).send({ error: `Missing permission: ${perm}` });
+  return false;
 }
 
 export async function scheduleRoutes(fastify) {
   fastify.get('/api/client/servers/:id/schedules', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'schedules')) return reply.code(403).send({ error: 'Missing permission: schedules' });
     const schedules = await q(
       `SELECT s.*, (SELECT count(*)::int FROM schedule_tasks t WHERE t.schedule_id = s.id) AS task_count
        FROM schedules s WHERE s.server_id = $1 ORDER BY s.created_at DESC`,
@@ -109,6 +129,7 @@ export async function scheduleRoutes(fastify) {
   fastify.post('/api/client/servers/:id/schedules', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
+    if (!can(server, 'schedules')) return reply.code(403).send({ error: 'Missing permission: schedules' });
     const { name, cron, is_active, tasks } = req.body || {};
     if (!name || !cron) return reply.code(400).send({ error: 'name and cron are required' });
     const sched = await q1(
@@ -126,10 +147,11 @@ export async function scheduleRoutes(fastify) {
 
   fastify.patch('/api/client/schedules/:id', { preHandler: requireAuth }, async (req, reply) => {
     const sched = await q1(
-      `SELECT s.* FROM schedules s JOIN servers sv ON sv.id = s.server_id WHERE s.id = $1 AND (sv.user_id = $2 OR $3)`,
-      [req.params.id, req.user.id, req.user.root_admin]
+      `SELECT s.*, sv.user_id AS owner_id FROM schedules s JOIN servers sv ON sv.id = s.server_id WHERE s.id = $1`,
+      [req.params.id]
     );
     if (!sched) return reply.code(404).send({ error: 'Schedule not found' });
+    if (!await canManage(req, reply, sched.server_id, 'schedules')) return;
     const { name, cron, is_active } = req.body || {};
     const updated = await q1(
       `UPDATE schedules SET name = COALESCE($1, name), cron = COALESCE($2, cron), is_active = COALESCE($3, is_active) WHERE id = $4 RETURNING *`,
@@ -140,10 +162,11 @@ export async function scheduleRoutes(fastify) {
 
   fastify.delete('/api/client/schedules/:id', { preHandler: requireAuth }, async (req, reply) => {
     const sched = await q1(
-      `SELECT s.* FROM schedules s JOIN servers sv ON sv.id = s.server_id WHERE s.id = $1 AND (sv.user_id = $2 OR $3)`,
-      [req.params.id, req.user.id, req.user.root_admin]
+      `SELECT s.*, sv.user_id AS owner_id FROM schedules s JOIN servers sv ON sv.id = s.server_id WHERE s.id = $1`,
+      [req.params.id]
     );
     if (!sched) return reply.code(404).send({ error: 'Schedule not found' });
+    if (!await canManage(req, reply, sched.server_id, 'schedules')) return;
     await q(`DELETE FROM schedules WHERE id = $1`, [sched.id]);
     return { ok: true };
   });
@@ -151,10 +174,11 @@ export async function scheduleRoutes(fastify) {
   // Tasks
   fastify.post('/api/client/schedules/:id/tasks', { preHandler: requireAuth }, async (req, reply) => {
     const sched = await q1(
-      `SELECT s.* FROM schedules s JOIN servers sv ON sv.id = s.server_id WHERE s.id = $1 AND (sv.user_id = $2 OR $3)`,
-      [req.params.id, req.user.id, req.user.root_admin]
+      `SELECT s.*, sv.user_id AS owner_id FROM schedules s JOIN servers sv ON sv.id = s.server_id WHERE s.id = $1`,
+      [req.params.id]
     );
     if (!sched) return reply.code(404).send({ error: 'Schedule not found' });
+    if (!await canManage(req, reply, sched.server_id, 'schedules')) return;
     const { action, payload } = req.body || {};
     if (!['start', 'stop', 'restart', 'kill', 'command'].includes(action)) return reply.code(400).send({ error: 'Invalid action' });
     const count = await q1(`SELECT count(*)::int AS c FROM schedule_tasks WHERE schedule_id = $1`, [sched.id]);
@@ -167,10 +191,11 @@ export async function scheduleRoutes(fastify) {
 
   fastify.delete('/api/client/schedule-tasks/:id', { preHandler: requireAuth }, async (req, reply) => {
     const task = await q1(
-      `SELECT t.* FROM schedule_tasks t JOIN schedules s ON s.id = t.schedule_id JOIN servers sv ON sv.id = s.server_id WHERE t.id = $1 AND (sv.user_id = $2 OR $3)`,
-      [req.params.id, req.user.id, req.user.root_admin]
+      `SELECT t.*, sv.user_id AS owner_id FROM schedule_tasks t JOIN schedules s ON s.id = t.schedule_id JOIN servers sv ON sv.id = s.server_id WHERE t.id = $1`,
+      [req.params.id]
     );
     if (!task) return reply.code(404).send({ error: 'Task not found' });
+    if (!await canManage(req, reply, task.server_id, 'schedules')) return;
     await q(`DELETE FROM schedule_tasks WHERE id = $1`, [task.id]);
     return { ok: true };
   });
