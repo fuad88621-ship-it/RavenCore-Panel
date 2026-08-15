@@ -495,7 +495,10 @@ export async function clientRoutes(fastify) {
   fastify.post('/api/client/servers/:id/reinstall', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    if (!can(server, 'settings')) return reply.code(403).send({ error: 'Missing permission: settings' });
+    // Reinstall wipes the server's dependencies — owner/admin only, like delete.
+    if (!req.user.root_admin && server.user_id !== req.user.id) {
+      return reply.code(403).send({ error: 'Only the owner can reinstall this server' });
+    }
     await q(`UPDATE servers SET status = 'installing' WHERE id = $1`, [server.id]);
     agentRequestFor(server.uuid, `/servers/${server.uuid}/reinstall`, 'POST', {
       image: server.egg_image,
