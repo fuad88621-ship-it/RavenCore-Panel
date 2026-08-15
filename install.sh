@@ -274,6 +274,35 @@ else
   ok "Docker already installed"
 fi
 
+# ── Fix container DNS ─────────────────────────────────────────────
+# Some hosts (systemd-resolved with "search ." in resolv.conf) make Docker
+# copy the host's 127.0.0.53 stub into containers, which breaks DNS inside
+# them (Minecraft version checks, pip/npm, git clones…). Pin the Docker
+# daemon to real upstream resolvers so every container gets working DNS.
+info "Configuring Docker DNS…"
+UPSTREAM_DNS="$(resolvectl status 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | sort -u | head -2 | tr '\n' ' ')"
+if [ -z "$UPSTREAM_DNS" ]; then
+  UPSTREAM_DNS="8.8.8.8 1.1.1.1"
+fi
+DNS_JSON="$(echo "$UPSTREAM_DNS" | awk '{for(i=1;i<=NF;i++) printf "\"%s\"%s", $i, (i<NF?",":"")}')"
+if command -v python3 >/dev/null 2>&1 && [ -f /etc/docker/daemon.json ]; then
+  python3 - "$DNS_JSON" <<'PY'
+import json, sys
+dns = [x.strip('"') for x in sys.argv[1].split(',')]
+p = '/etc/docker/daemon.json'
+try:
+    with open(p) as f: cfg = json.load(f)
+except Exception:
+    cfg = {}
+cfg['dns'] = dns
+with open(p, 'w') as f: json.dump(cfg, f, indent=2)
+PY
+else
+  echo "{\"dns\": [$DNS_JSON]}" > /etc/docker/daemon.json
+fi
+systemctl restart docker >/dev/null 2>&1 || true
+ok "Docker DNS configured ($UPSTREAM_DNS)"
+
 # Detect docker compose (v2 plugin) vs docker-compose (v1)
 COMPOSE=""
 if docker compose version >/dev/null 2>&1; then
