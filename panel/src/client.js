@@ -282,6 +282,17 @@ export async function clientRoutes(fastify) {
     return { metrics: await getServerMetrics(server.id, hours) };
   });
 
+  // Minecraft status ping — live player count for the server card.
+  fastify.get('/api/client/servers/:id/mc-ping', { preHandler: requireAuth }, async (req, reply) => {
+    const server = await getServerForUser(req, reply);
+    if (!server) return;
+    const base = (server.egg_name || '').toLowerCase();
+    if (!['minecraft', 'vanilla'].some((k) => base.includes(k))) {
+      return reply.code(400).send({ error: 'Not a Minecraft server' });
+    }
+    return agentRequestFor(server.uuid, `/servers/${server.uuid}/mc-ping`);
+  });
+
   // Alerts for my servers
   fastify.get('/api/client/alerts', { preHandler: requireAuth }, async (req) => {
     const alerts = await q(
