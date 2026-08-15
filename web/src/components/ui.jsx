@@ -294,6 +294,7 @@ export function StatusBadge({ status }) {
     running: { tone: 'green', dot: 'emerald', label: 'Running', ring: true },
     offline: { tone: 'zinc', dot: 'zinc', label: 'Offline' },
     installing: { tone: 'amber', dot: 'amber', label: 'Installing', pulse: true },
+    install_failed: { tone: 'red', dot: 'red', label: 'Install Failed' },
     suspended: { tone: 'red', dot: 'red', label: 'Suspended' },
   };
   const s = map[status] || map.offline;
