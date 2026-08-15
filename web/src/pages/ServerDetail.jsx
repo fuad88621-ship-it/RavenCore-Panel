@@ -1879,6 +1879,7 @@ export default function ServerDetail() {
   const [resources, setResources] = useState(null);
   const [metrics, setMetrics] = useState([]);
   const [error, setError] = useState('');
+  const toast = useToast();
 
   useEffect(() => {
     const ab = new AbortController();
@@ -1992,8 +1993,11 @@ export default function ServerDetail() {
       await api.power(server.id, action);
       const d = await api.server(server.id);
       setServer(d.server);
+      const labels = { start: 'Server started', stop: 'Server stopped', restart: 'Server restarted', kill: 'Server killed' };
+      toast.push(labels[action] || 'Done');
     } catch (e) {
       setError(e.message);
+      toast.push(e.message, 'error');
     }
   }
 
