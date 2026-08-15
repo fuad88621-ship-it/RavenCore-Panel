@@ -1119,7 +1119,7 @@ function StartupTab({ server }) {
   );
 }
 
-function SettingsTab({ server, onDeleted, resetKey }) {
+function SettingsTab({ server, isOwner, onDeleted, resetKey }) {
   const [name, setName] = useState(server.name);
   const [description, setDescription] = useState(server.description || '');
   const [error, setError] = useState('');
@@ -1186,15 +1186,17 @@ function SettingsTab({ server, onDeleted, resetKey }) {
       {error && <p className="text-sm text-red-400">{error}</p>}
       <div className="flex flex-wrap items-center gap-2">
         <button className="btn-primary" onClick={save}>Save changes</button>
-        <button className="btn-ghost" onClick={reinstall}>Reinstall</button>
+        {isOwner && <button className="btn-ghost" onClick={reinstall}>Reinstall</button>}
         {saved && <span className="text-sm text-emerald-400">Saved ✓</span>}
       </div>
 
+      {isOwner && (
       <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-5">
         <h3 className="mb-1 text-sm font-semibold text-red-200">Danger zone</h3>
         <p className="mb-4 text-xs text-red-200/70">Deleting this server will permanently remove all files, databases, and backups associated with it.</p>
         <button className="btn-danger" onClick={remove}>Delete server</button>
       </div>
+      )}
     </div>
   );
 }
@@ -1896,6 +1898,9 @@ export default function ServerDetail() {
 
   useEffect(() => {
     if (!server) return;
+    // Subusers without the 'network' permission can't read resources — don't
+    // poll an endpoint that will 403 (would show skeletons forever).
+    if (perms && !perms.includes('network')) { setResources(null); return; }
     const controller = new AbortController();
     let mounted = true;
     function load() {
@@ -1914,11 +1919,12 @@ export default function ServerDetail() {
       clearInterval(t);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [server?.id]);
+  }, [server?.id, perms]);
 
   // Resource history for the live graphs (24h, refreshed every 60s)
   useEffect(() => {
     if (!server) return;
+    if (perms && !perms.includes('network')) { setMetrics([]); return; }
     let mounted = true;
     function load() {
       api.metrics(server.id, 24)
@@ -1928,18 +1934,18 @@ export default function ServerDetail() {
     load();
     const t = setInterval(load, 60000);
     return () => { mounted = false; clearInterval(t); };
-  }, [server?.id]);
+  }, [server?.id, perms]);
 
   // Plugins (Modrinth marketplace) only makes sense for Minecraft eggs.
   const isMinecraft = /minecraft/i.test(server?.egg_name || '');
 
   // Subuser permission gating: perms is null for owner/admin (all tabs),
   // an array of granted permissions for subusers.
+  const can = (p) => !perms || perms.includes(p);
+  const isOwner = !perms;
   const tabs = useMemo(() => {
-    const can = (p) => !perms || perms.includes(p);
-    const isOwner = !perms;
     return [
-      { id: 'console', label: 'Console', icon: <Icons.Terminal className="h-4 w-4" /> },
+      ...(can('console') ? [{ id: 'console', label: 'Console', icon: <Icons.Terminal className="h-4 w-4" /> }] : []),
       ...(can('files') ? [{ id: 'files', label: 'Files', icon: <Icons.Folder className="h-4 w-4" /> }] : []),
       ...(can('databases') ? [{ id: 'databases', label: 'Databases', icon: <Icons.Database className="h-4 w-4" /> }] : []),
       ...(can('schedules') ? [{ id: 'schedules', label: 'Schedules', icon: <Icons.Clock className="h-4 w-4" /> }] : []),
@@ -2033,13 +2039,13 @@ export default function ServerDetail() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {server.status === 'running' ? (
+        {can('console') && (server.status === 'running' ? (
           <button className="btn-ghost min-h-[44px]" onClick={() => power('stop')}><Icons.Stop className="h-4 w-4" /> Stop</button>
         ) : (
           <button className="btn-primary min-h-[44px]" onClick={() => power('start')} disabled={server.status === 'installing'}><Icons.Play className="h-4 w-4" /> Start</button>
-        )}
-        <button className="btn-ghost min-h-[44px]" onClick={() => power('restart')} disabled={server.status === 'installing'}><Icons.Restart className="h-4 w-4" /> Restart</button>
-        <button className="btn-danger min-h-[44px]" onClick={() => power('kill')}><Icons.Kill className="h-4 w-4" /> Kill</button>
+        ))}
+        {can('console') && <button className="btn-ghost min-h-[44px]" onClick={() => power('restart')} disabled={server.status === 'installing'}><Icons.Restart className="h-4 w-4" /> Restart</button>}
+        {can('console') && <button className="btn-danger min-h-[44px]" onClick={() => power('kill')}><Icons.Kill className="h-4 w-4" /> Kill</button>}
       </div>
 
       <div className={cn('mb-4 flex gap-1 overflow-x-auto border-b border-white/[0.06]', 'scrollbar-none')}>
@@ -2063,8 +2069,11 @@ export default function ServerDetail() {
 
       <div className={cn('grid grid-cols-1 gap-4 lg:grid-cols-3', tab !== 'console' && 'hidden')}>
         <div className="lg:col-span-2">
-          <ConsoleTab server={server} />
+          {can('console') ? <ConsoleTab server={server} /> : (
+            <Card className="p-6 text-center text-sm text-zinc-500">You don't have console access to this server.</Card>
+          )}
         </div>
+        {can('network') && (
         <div className="space-y-3">
           {!resources && (
             <div className="space-y-3">
@@ -2081,6 +2090,7 @@ export default function ServerDetail() {
           )}
           {statCards.map((s, i) => <StatCard key={s.label} {...s} index={i} />)}
         </div>
+        )}
       </div>
       {tab !== 'console' && (
         <>
@@ -2093,11 +2103,12 @@ export default function ServerDetail() {
           {tab === 'plugins' && isMinecraft && <PluginsTab server={server} resetKey={resetKey} />}
           {tab === 'startup' && <StartupTab server={server} resetKey={resetKey} />}
           {tab === 'activity' && <ActivityTab server={server} resetKey={resetKey} />}
-          {tab === 'settings' && <SettingsTab server={server} onDeleted={() => navigate('/')} resetKey={resetKey} />}
+          {tab === 'settings' && <SettingsTab server={server} isOwner={isOwner} onDeleted={() => navigate('/')} resetKey={resetKey} />}
         </>
       )}
 
-      {/* Resource history (24h live graphs) */}
+      {/* Resource history (24h live graphs) — needs the network permission */}
+      {can('network') && (
       <Card className="mt-6 p-5">
         <div className="mb-4 flex items-center justify-between">
           <div>
@@ -2133,6 +2144,7 @@ export default function ServerDetail() {
           </div>
         </div>
       </Card>
+      )}
     </div>
   );
 }
