@@ -136,6 +136,27 @@ export async function adminServerRoutes(fastify) {
     if (used.disk + disk > diskCap) return reply.code(400).send({ error: 'Node out of disk' });
     if (used.cpu + cpuPct > cpuCap) return reply.code(400).send({ error: 'Node out of CPU' });
 
+    // The node must have enough free allocations (excluding ports used by
+    // other nodes on the same host) — otherwise the server would be created
+    // with no port.
+    if (allocCount > 0) {
+      const freeCount = await q1(
+        `SELECT count(*)::int AS c FROM allocations a
+         WHERE a.node_id = $1 AND a.server_id IS NULL
+         AND a.port NOT IN (
+           SELECT a2.port FROM allocations a2
+           JOIN servers s ON s.id = a2.server_id
+           JOIN nodes n ON n.id = a2.node_id
+           WHERE n.fqdn = (SELECT fqdn FROM nodes WHERE id = $1)
+             AND a2.port IS NOT NULL
+         )`,
+        [node.id]
+      );
+      if ((freeCount?.c || 0) < allocCount) {
+        return reply.code(400).send({ error: `Node has only ${freeCount?.c || 0} free allocation(s) but ${allocCount} requested. Add ports to the node first.` });
+      }
+    }
+
     // Merge egg variable defaults with provided env
     const variables = await q(`SELECT * FROM egg_variables WHERE egg_id = $1`, [egg.id]);
     const mergedEnv = {};
@@ -362,13 +383,22 @@ export async function adminServerRoutes(fastify) {
       );
       const newPort = free ? free.port : null;
 
-      // 3. Create the container on the destination (no install, stays offline)
+      // 3. Create the container on the destination (no install, stays offline).
+      // Re-render the startup command with the NEW port — the old command has
+      // the source port baked in (e.g. Minecraft's PORT={{SERVER_PORT}}), so a
+      // server moved to a different port would otherwise keep listening on the
+      // old one.
       setP('creating', 15);
+      const newStartup = renderStartup(egg?.startup_command || server.startup_command, server.env, {
+        SERVER_MEMORY: String(server.memory_mb),
+        SERVER_IP: dest.fqdn,
+        SERVER_PORT: String(newPort || ''),
+      });
       const createRes = await agentRequest('/servers', 'POST', {
         uuid: server.uuid,
         identifier: server.identifier,
         image: server.docker_image,
-        startup_command: server.startup_command,
+        startup_command: newStartup,
         install_command: null,
         memory_mb: server.memory_mb,
         disk_mb: server.disk_mb,
@@ -421,10 +451,11 @@ export async function adminServerRoutes(fastify) {
         await q(`UPDATE allocations SET server_id = $1 WHERE id = $2`, [server.id, free.id]);
       }
 
-      // 7. Update the server record
+      // 7. Update the server record (also persist the re-rendered startup so
+      // the DB matches what the container actually runs)
       await q(
-        `UPDATE servers SET node_id = $1, container_id = $2, status = $3, updated_at = now() WHERE id = $4`,
-        [dest.id, createRes.container_id, wasSuspended ? 'suspended' : 'offline', server.id]
+        `UPDATE servers SET node_id = $1, container_id = $2, status = $3, startup_command = $4, updated_at = now() WHERE id = $5`,
+        [dest.id, createRes.container_id, wasSuspended ? 'suspended' : 'offline', newStartup, server.id]
       );
 
       // 8. Auto-start if it was running
@@ -469,7 +500,7 @@ export async function adminServerRoutes(fastify) {
     if (dest.id === server.node_id) return reply.code(400).send({ error: 'Server is already on that node' });
     const src = await q1(`SELECT * FROM nodes WHERE id = $1`, [server.node_id]);
     if (!src) return reply.code(400).send({ error: 'Source node not found' });
-    const egg = await q1(`SELECT mount_target FROM eggs WHERE id = $1`, [server.egg_id]);
+    const egg = await q1(`SELECT mount_target, startup_command FROM eggs WHERE id = $1`, [server.egg_id]);
 
     // Destination capacity check (same logic as create)
     const used = await q1(
