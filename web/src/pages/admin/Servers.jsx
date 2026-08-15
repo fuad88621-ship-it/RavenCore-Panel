@@ -437,18 +437,17 @@ function TransferModal({ server, count = 1, nodes, onTransfer, onCancel }) {
           )}
         </p>
         <form onSubmit={submit} className="space-y-4">
-          <select
-            className="input"
+          <Select
             value={nodeId}
             onChange={(e) => setNodeId(e.target.value)}
-            onMouseDown={(e) => e.stopPropagation()}
-            required
+            label="Destination node"
+            className="w-full"
           >
             <option value="">Select destination node…</option>
             {available.map((n) => (
               <option key={n.id} value={n.id}>{n.name} — {n.fqdn}:{n.port}</option>
             ))}
-          </select>
+          </Select>
           {available.length === 0 && (
             <p className="text-xs text-amber-400">No other enabled nodes available to transfer to.</p>
           )}
