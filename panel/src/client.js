@@ -5,7 +5,7 @@ import { requireAuth } from './auth.js';
 import { agentRequest, agentRequestFor, consoleToken } from './agent-client.js';
 import { config } from './config.js';
 import { getServerMetrics } from './metrics.js';
-import { renderStartup } from './admin-servers.js';
+import { renderStartup, validateRules } from './admin-servers.js';
 import { createDatabase, deleteDatabase, rotateDatabasePassword } from './admin-databases.js';
 
 async function logActivity(serverId, userId, action, metadata = {}) {
@@ -460,6 +460,12 @@ export async function clientRoutes(fastify) {
     const { env } = req.body || {};
     if (!env) return reply.code(400).send({ error: 'env required' });
     const variables = await q(`SELECT * FROM egg_variables WHERE egg_id = $1`, [server.egg_id]);
+    // Validate the submitted values against the egg variable rules before saving.
+    for (const v of variables) {
+      if (env[v.env_variable] === undefined) continue;
+      const err = validateRules(v.rules, env[v.env_variable]);
+      if (err) return reply.code(400).send({ error: `${v.name}: ${err}` });
+    }
     const merged = { ...server.env, ...env };
     // Only allow editing user_editable variables
     for (const v of variables) {
