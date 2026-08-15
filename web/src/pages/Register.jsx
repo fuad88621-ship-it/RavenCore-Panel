@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../api.js';
-import { useAuth } from '../App.jsx';
+import { useAuth, useSettings } from '../App.jsx';
 import { Icons } from '../components/ui.jsx';
 export default function Register() {
+  const settings = useSettings();
+  const registrationOpen = settings['panel.registration'] !== 'false';
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -28,6 +30,21 @@ export default function Register() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!registrationOpen) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center px-4">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="w-full max-w-sm">
+          <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-8 text-center">
+            <Icons.Lock className="mx-auto mb-4 h-10 w-10 text-zinc-500" />
+            <h1 className="mb-2 text-lg font-bold text-white">Registration is disabled</h1>
+            <p className="text-sm text-zinc-500">The administrator has turned off new registrations.</p>
+            <Link to="/login" className="mt-5 inline-block text-sm font-medium text-violet-400 hover:text-violet-300">Back to login</Link>
+          </div>
+        </motion.div>
+      </div>
+    );
   }
 
   return (
