@@ -137,7 +137,7 @@ export async function adminRoutes(fastify) {
     if (!hasPermission(key, 'node:create') && !hasPermission(key, 'nodes.create')) {
       return reply.code(403).send({ error: 'API key lacks node:create permission' });
     }
-    const { name, fqdn, port, scheme, memory_mb, disk_mb, cpu_cores, file_directory, sftp_port } = req.body || {};
+    const { name, fqdn, port, scheme, memory_mb, disk_mb, cpu_cores, file_directory, sftp_port, behind_proxy } = req.body || {};
     if (!name || !fqdn) {
       return reply.code(400).send({ error: 'name and fqdn are required' });
     }
@@ -150,10 +150,10 @@ export async function adminRoutes(fastify) {
     if (existing) {
       const node = await q1(
         `UPDATE nodes SET fqdn = $1, port = $2, scheme = $3, memory_mb = $4, disk_mb = $5,
-         cpu_cores = $6, file_directory = $7, sftp_port = $8, enabled = true, updated_at = now()
-         WHERE id = $9 RETURNING id, uuid, name, fqdn, port, scheme`,
+         cpu_cores = $6, file_directory = $7, sftp_port = $8, behind_proxy = $9, enabled = true, updated_at = now()
+         WHERE id = $10 RETURNING id, uuid, name, fqdn, port, scheme`,
         [fqdn, port || 8080, scheme || 'http', memory_mb || 0, disk_mb || 0, cpu_cores || 0,
-         file_directory || '/var/lib/raven/bots', sftp_port || 2022, existing.id]
+         file_directory || '/var/lib/raven/bots', sftp_port || 2022, !!behind_proxy, existing.id]
       );
       return reply.code(200).send({ node, daemon_token: existing.daemon_token, updated: true });
     }
@@ -162,7 +162,7 @@ export async function adminRoutes(fastify) {
         `INSERT INTO nodes (uuid, name, description, location_id, fqdn, port, scheme, visibility, behind_proxy, file_directory, sftp_port, memory_mb, disk_mb, cpu_cores, daemon_token)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id, uuid, name, fqdn, port, scheme`,
         [genUuid(), name, 'Registered via installer', loc?.id || null, fqdn, port || 8080, scheme || 'http',
-         'public', false, file_directory || '/var/lib/raven/bots', sftp_port || 2022,
+         'public', !!behind_proxy, file_directory || '/var/lib/raven/bots', sftp_port || 2022,
          memory_mb || 0, disk_mb || 0, cpu_cores || 0, token]
       );
       return reply.code(201).send({ node, daemon_token: token });
