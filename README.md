@@ -71,7 +71,7 @@ The Panel and Agent can live on the same machine, or you can connect remote Agen
 - At least **2 CPU cores**, **4 GB RAM**, **20 GB disk** (more for actual workloads)
 - A domain name pointing at your server (for SSL)
 - Ports `80` and `443` open (Caddy handles SSL automatically)
-- Port `8080` open if you run the Agent on the same machine
+- Port `2022` open if you want SFTP access to servers
 
 ---
 
@@ -79,43 +79,42 @@ The Panel and Agent can live on the same machine, or you can connect remote Agen
 
 ### Quick Install
 
-Run this one command on a fresh VPS:
+**Full panel** (web UI + database + local node) — run on a fresh VPS:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install-panel.sh)
+```
+
+It asks for your panel domain, node domain, admin credentials and node resources, then installs Docker, configures container DNS, generates secrets, builds the stack and creates your admin account automatically.
+
+**Add a node** (a machine that runs server containers) — run on any other VPS:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh)
 ```
 
-You will see a menu like this:
-
-```
-═══════════════════════════════════════════════════
-  RavenCore Panel Installer
-═══════════════════════════════════════════════════
-
-  [1] Install Panel
-  [2] Install Agent (Wings)
-  [3] Install Panel + Agent
-  [4] Exit
-```
-
-Pick option `3` for a typical single-server setup.
-
 ### Installer Menu Options
 
-| Option | Use when |
-|--------|----------|
-| **Install Panel** | You already have a separate Agent host and only need the web panel/API |
-| **Install Agent** | You already have a Panel running elsewhere and want this machine to host containers |
-| **Install Panel + Agent** | One machine does everything (recommended for most users) |
+`install-panel.sh` (the panel installer) asks:
 
-The installer will:
+| Question | What it's for |
+|----------|---------------|
+| **Panel domain** | Where users log in (e.g. `panel.example.com`) |
+| **Node domain** | Only used for the browser console WebSocket (e.g. `node.example.com`) |
+| **Admin email / username / password** | Your first admin account (blank password = random) |
+| **Node name / memory / disk / CPU** | Resources for the local node |
 
-1. Update the system
-2. Install Docker & Docker Compose plugin
-3. Clone this repo to `/opt/raven`
-4. Generate secure secrets in `/opt/raven/.env`
-5. Build and start the selected services
-6. Print your access URLs
+Re-running `install-panel.sh` on the same VPS updates the panel (git pull + rebuild, keeps your `.env` and data).
+
+`install.sh` (the node installer) shows a menu when the agent is already installed:
+
+```
+  1) Update the agent (re-download + rebuild)
+  2) Delete the agent (remove everything RavenCore, keeps other apps)
+  3) Reinstall (connect to the panel again)
+  4) Uninstall the panel (only if this VPS IS the panel — removes everything)
+  q) Quit
+```
 
 ---
 
@@ -132,19 +131,19 @@ After the installer finishes:
 
 ### Creating the First Admin
 
-If you used the installer and picked **Install Panel** or **Install Panel + Agent**, it already asked you for an admin username, email, and password. Just log in with those credentials.
+`install-panel.sh` creates your admin account automatically (it registers the user and promotes them to `root_admin`).
 
 If you need to create or promote an admin manually later:
 
 ```bash
 cd /opt/raven
-docker compose exec panel node -e "
-const { registerUser } = await import('./src/auth.js');
-const { q } = await import('./src/db.js');
-const user = await registerUser('USERNAME', 'EMAIL', 'PASSWORD');
-await q('UPDATE users SET root_admin = true WHERE id = \$1', [user.id]);
-console.log('Admin created:', user.username);
-"
+# register the user through the panel's own API
+curl -s -X POST http://localhost:3000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","email":"you@example.com","password":"YourPass123"}'
+# promote to admin
+docker exec raven-postgres-1 psql -U raven -d raven -c \
+  "UPDATE users SET root_admin = true WHERE email = 'you@example.com';"
 ```
 
 ### Environment Variables
@@ -203,7 +202,7 @@ Defines all services: panel, agent, postgres, redis, mariadb, caddy.
 
 ### `Caddyfile`
 
-Reverse proxy config. It handles SSL automatically with Let's Encrypt.
+Reverse proxy config. It handles SSL automatically with Let's Encrypt. The node domain is **only** for the browser console WebSocket — everything else on it returns 404 (the agent API itself stays internal).
 
 ```caddy
 panel.yourdomain.com {
@@ -211,9 +210,14 @@ panel.yourdomain.com {
 }
 
 node.yourdomain.com {
-    reverse_proxy agent:8080
+    @ws path_regexp ^/servers/[0-9a-f-]+/ws$
+    reverse_proxy @ws agent:8080
+    @notws not path_regexp ^/servers/[0-9a-f-]+/ws$
+    respond @notws 404
 }
 ```
+
+`install-panel.sh` generates this file from your domains automatically.
 
 After editing any config file, restart services:
 
@@ -234,16 +238,13 @@ If you installed Panel + Agent on the same machine, a node called `Node-01` is c
 
 ### Remote Node
 
-1. Install the Agent on the remote machine using the installer (option `2`).
-2. In the Panel, go to **Admin → Nodes → New Node**.
-3. Fill in the form:
-   - **Name:** anything you want, e.g. `US-East-02`
-   - **FQDN:** the remote agent's domain, e.g. `node2.yourdomain.com`
-   - **Daemon Port:** `8080`
-   - **SFTP Port:** `2022`
-   - **Daemon Token:** leave empty to auto-generate, or paste the `AGENT_TOKEN` from the remote machine's `/opt/raven/.env`
-4. Click **Register node**.
-5. Go into the node, then **Allocations**, and add ports the server can use (e.g. `25565-25575`).
+1. On the remote VPS, run the node installer:
+   ```bash
+   bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh)
+   ```
+2. It asks for your **Panel URL** and a **daemon token** — create the token in the Panel under **Admin → Nodes → New Node** (or use an existing node's token). The node registers itself with the panel automatically.
+3. In the Panel, go to **Admin → Nodes** and check the new node is online.
+4. Go into the node, then **Allocations**, and add ports the server can use (e.g. `25565-25575`).
 
 ---
 
@@ -287,15 +288,18 @@ curl -H "Authorization: Bearer ptla_xxxxxxxxxx" \
 
 ## Updating
 
-To update to the latest version:
+**Panel:** re-run the panel installer — it detects the existing install and offers to update:
 
 ```bash
-cd /opt/raven
-git pull
-bash install.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install-panel.sh)
+# answer "y" when it asks to update
 ```
 
-Pick the same option you used before (usually `3`). The script will rebuild containers with the latest code.
+**Nodes:**
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh) --update
+```
 
 ---
 
@@ -321,11 +325,11 @@ Reset it via the database:
 
 ```bash
 cd /opt/raven
-docker compose exec panel node -e "
+docker exec raven-panel-1 node -e "
 const bcrypt = require('bcryptjs');
 const { pool } = require('./src/db.js');
 const hash = bcrypt.hashSync('NEW_PASSWORD', 10);
-pool.query('UPDATE users SET password_hash = $1 WHERE username = $2', [hash, 'YOUR_USERNAME']).then(() => console.log('Done'));
+pool.query('UPDATE users SET password_hash = \$1 WHERE username = \$2', [hash, 'YOUR_USERNAME']).then(() => console.log('Done'));
 "
 ```
 
@@ -337,12 +341,17 @@ Registration is enabled by default. If disabled, create the first user directly 
 
 ## Uninstall
 
-This removes Raven and all its data. **This cannot be undone.**
+**Remove the whole panel** (panel, database, all bots, everything — cannot be undone):
 
 ```bash
-cd /opt/raven
-docker compose down -v
-rm -rf /opt/raven
+bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh) --uninstall-panel
+# type DELETE to confirm
+```
+
+**Remove just a node** (keeps other apps on that VPS):
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh) --delete
 ```
 
 ---
