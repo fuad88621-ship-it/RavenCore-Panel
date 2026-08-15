@@ -2,6 +2,7 @@ import path from 'node:path';
 import { q, q1 } from './db.js';
 import { requireAuth } from './auth.js';
 import { agentRequest, agentRequestFor, consoleToken } from './agent-client.js';
+import { config } from './config.js';
 import { getServerMetrics } from './metrics.js';
 import { renderStartup } from './admin-servers.js';
 import { createDatabase, deleteDatabase, rotateDatabasePassword } from './admin-databases.js';
@@ -21,6 +22,7 @@ async function getServerForUser(req, reply) {
   const server = await q1(
     `SELECT s.*, e.name AS egg_name, e.startup_command AS egg_startup, e.docker_image AS egg_image,
             n.name AS node_name, n.fqdn AS node_fqdn, n.port AS node_port, n.scheme AS node_scheme, n.behind_proxy AS node_behind_proxy,
+            n.id AS node_id, n.daemon_token AS node_daemon_token,
             nest.name AS nest_name,
             a.ip AS allocation_ip, a.port AS allocation_port
      FROM servers s
@@ -144,7 +146,13 @@ export async function clientRoutes(fastify) {
   fastify.get('/api/client/servers/:id/console', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
-    const token = consoleToken(server);
+    // Node agents (installed via install.sh) verify console JWTs with their
+    // own CONSOLE_SECRET = daemon_token. Local nodes share the panel's
+    // console_secret. Sign with the right secret per node so consoles work on
+    // every node, not just the local one.
+    const isLocal = server.node_name === config.node.name || server.node_fqdn === config.node.fqdn;
+    const secret = isLocal ? config.security.console_secret : server.node_daemon_token;
+    const token = consoleToken(server, secret);
     // Behind a proxy (Caddy/nginx) → wss://fqdn (no port). Direct agent → ws://fqdn:port.
     const wsScheme = server.node_scheme === 'https' ? 'wss' : 'ws';
     const host = server.node_behind_proxy
