@@ -60,7 +60,7 @@ The Panel and Agent can live on the same machine, or you can connect remote Agen
 - 🗄️ Per-server MySQL databases
 - 🚀 One-command installer with interactive menu
 - 🖥️ Browser console for each server
-- 📦 Pre-built eggs (Node.js, Python, Go, Java)
+- 📦 Pre-built eggs (Node.js, Python, Go, Java, Minecraft Paper, Minecraft Vanilla)
 
 ---
 
