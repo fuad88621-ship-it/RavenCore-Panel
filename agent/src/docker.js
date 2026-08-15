@@ -254,7 +254,12 @@ export async function power(uuid, action) {
       await updateSpec(uuid, { should_run: false });
       const container = await findContainer(uuid);
       if (!container) return { status: 'offline' };
-      await container.kill();
+      try {
+        await container.kill();
+      } catch (e) {
+        // Killing a stopped container is a no-op — don't error out.
+        if (!/not running/i.test(e.message)) throw e;
+      }
       break;
     }
     default: throw new Error('Invalid action');
