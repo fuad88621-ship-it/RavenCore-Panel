@@ -1884,6 +1884,7 @@ export default function ServerDetail() {
   const [resetKey, setResetKey] = useState(0);
   const [resources, setResources] = useState(null);
   const [metrics, setMetrics] = useState([]);
+  const [perms, setPerms] = useState(null); // null = owner/admin (all tabs), array = subuser permissions
   const [error, setError] = useState('');
   const toast = useToast();
 
