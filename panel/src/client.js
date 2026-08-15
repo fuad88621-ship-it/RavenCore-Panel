@@ -503,6 +503,7 @@ export async function clientRoutes(fastify) {
     agentRequestFor(server.uuid, `/servers/${server.uuid}/reinstall`, 'POST', {
       image: server.egg_image,
       install_command: null,
+      env: server.env,
     }).then(async () => {
       await q(`UPDATE servers SET status = 'offline' WHERE id = $1`, [server.id]);
     }).catch(async (e) => {
