@@ -1996,8 +1996,8 @@ export default function ServerDetail() {
       const labels = { start: 'Server started', stop: 'Server stopped', restart: 'Server restarted', kill: 'Server killed' };
       toast.push(labels[action] || 'Done');
     } catch (e) {
-      setError(e.message);
-      toast.push(e.message, 'error');
+      // A failed power action must never nuke the whole page — just toast it.
+      toast.push(e.message || 'Action failed', 'error');
     }
   }
 
