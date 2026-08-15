@@ -641,7 +641,10 @@ export async function streamInstallLog(uuid, onData, onClose) {
 // ---- Backups ----
 
 function backupPath(name) {
-  return path.join(config.botDataDir, 'backups', `${name}.tar.gz`);
+  // Only allow safe backup names (UUIDs from the panel) — never let a
+  // caller escape the backups dir via path traversal.
+  const safe = String(name || '').replace(/[^a-zA-Z0-9._-]/g, '');
+  return path.join(config.botDataDir, 'backups', `${safe}.tar.gz`);
 }
 
 export async function createBackup(uuid, name) {
