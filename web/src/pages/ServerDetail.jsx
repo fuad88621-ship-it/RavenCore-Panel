@@ -6,7 +6,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import Editor from '@monaco-editor/react';
 import { api } from '../api.js';
 import { useDebouncedCallback } from '../useDebounce.js';
-import { Card, ErrorState, Icons, Select, Skeleton, StatusBadge, useConfirm, useToast, cn } from '../components/ui.jsx';
+import { Card, ErrorState, Icons, Select, Skeleton, StatusBadge, useConfirm, useToast, useCopy, cn } from '../components/ui.jsx';
 import { AreaChart } from '../components/Charts.jsx';
 
 function StatChip({ label, value }) {
@@ -38,6 +38,7 @@ function formatMemory(mb) {
 }
 
 function StatCard({ icon, label, value, sub, bar, index, copy }) {
+  const copyText = useCopy();
   const hasBar = typeof bar === 'number';
   const pct = hasBar ? Math.min(100, Math.max(0, bar)) : 0;
   return (
@@ -58,7 +59,7 @@ function StatCard({ icon, label, value, sub, bar, index, copy }) {
             {copy && (
               <button
                 className="ml-auto shrink-0 rounded p-1 text-zinc-500 transition hover:bg-white/[0.06] hover:text-violet-300"
-                onClick={() => navigator.clipboard.writeText(copy)}
+                onClick={() => copyText(copy, 'Address copied')}
                 title="Copy address"
                 aria-label="Copy address"
               >
@@ -482,6 +483,7 @@ function FilesTab({ server, resetKey }) {
     try {
       await api.writeFile(server.id, join(path, editing), content);
       setEditing(null);
+      toast.push('Saved successfully');
       load(path);
     } catch (e) {
       setError(e.message);
@@ -954,6 +956,7 @@ function DatabasesTab({ server, resetKey }) {
   const [error, setError] = useState('');
   const [revealed, setRevealed] = useState({});
   const confirm = useConfirm();
+  const copyText = useCopy();
 
   // Clicking the active tab again resets the form.
   useEffect(() => {
@@ -1034,7 +1037,7 @@ function DatabasesTab({ server, resetKey }) {
               <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-white/[0.03] p-3 font-mono text-xs sm:grid-cols-2">
                 <p><span className="text-zinc-500">Database:</span> <span className="text-zinc-200">{db.database_name}</span></p>
                 <p><span className="text-zinc-500">Username:</span> <span className="text-zinc-200">{db.username}</span></p>
-                <p className="flex items-center gap-2"><span className="text-zinc-500">Password:</span> <span className="text-zinc-200">{db.password}</span><button className="text-zinc-500 transition hover:text-violet-300" onClick={() => navigator.clipboard.writeText(db.password)} aria-label={`Copy password for ${db.database_name}`}><Icons.Copy className="h-3.5 w-3.5" /></button></p>
+                <p className="flex items-center gap-2"><span className="text-zinc-500">Password:</span> <span className="text-zinc-200">{db.password}</span><button className="text-zinc-500 transition hover:text-violet-300" onClick={() => copyText(db.password, 'Password copied')} aria-label={`Copy password for ${db.database_name}`}><Icons.Copy className="h-3.5 w-3.5" /></button></p>
                 <p><span className="text-zinc-500">Host:</span> <span className="text-zinc-200">{db.host}:{db.port || 3306}</span></p>
               </div>
             )}
@@ -1053,6 +1056,7 @@ function StartupTab({ server }) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const savedTimer = useRef(null);
+  const toast = useToast();
 
   useEffect(() => () => {
     if (savedTimer.current) clearTimeout(savedTimer.current);
@@ -1071,6 +1075,7 @@ function StartupTab({ server }) {
     try {
       await api.updateStartup(server.id, env);
       setSaved(true);
+      toast.push('Startup saved');
       if (savedTimer.current) clearTimeout(savedTimer.current);
       savedTimer.current = setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -1611,6 +1616,7 @@ function ActivityTab({ server }) {
 }
 
 function NetworkTab({ server }) {
+  const copyText = useCopy();
   const [allocations, setAllocations] = useState([]);
   const [sftp, setSftp] = useState(null);
   const [showSftpPassword, setShowSftpPassword] = useState(false);
@@ -1673,7 +1679,7 @@ function NetworkTab({ server }) {
                 <div className="flex gap-2">
                   <input className="input font-mono" type={showSftpPassword ? 'text' : 'password'} value={sftp.password} readOnly />
                   <button className="btn-ghost !px-3" onClick={() => setShowSftpPassword((v) => !v)} title={showSftpPassword ? 'Hide password' : 'Show password'} aria-label={showSftpPassword ? 'Hide password' : 'Show password'} aria-pressed={showSftpPassword}><Icons.EyeOff className="h-4 w-4" /></button>
-                  <button className="btn-ghost !px-3" onClick={() => navigator.clipboard.writeText(sftp.password)} title="Copy" aria-label="Copy password"><Icons.Copy className="h-4 w-4" /></button>
+                  <button className="btn-ghost !px-3" onClick={() => copyText(sftp.password, 'SFTP password copied')} title="Copy" aria-label="Copy password"><Icons.Copy className="h-4 w-4" /></button>
                 </div>
               </div>
             </div>
