@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'node:os';
 import { createReadStream } from 'node:fs';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { config } from './config.js';
 
@@ -70,6 +70,15 @@ export async function findContainer(uuid) {
   return null;
 }
 
+// Find the MAIN server container, skipping the one-off install container
+// (which shares the raven.uuid label but is marked raven.install=true).
+export async function findMainContainer(uuid) {
+  const containers = await docker.listContainers({ all: true });
+  const hit = containers.find((c) => c.Labels && c.Labels['raven.uuid'] === uuid && c.Labels['raven.install'] !== 'true');
+  if (hit) return docker.getContainer(hit.Id);
+  return null;
+}
+
 export async function createBot({ uuid, identifier, image, startup_command, install_command, memory_mb, disk_mb, cpu, env, mounts = [], mount_target = '/home/container', sftp_password = null, io = 500, cpu_pinning = '', oom_killer = true, allocation_port = null, should_run = false }) {
   const dir = await ensureBotDir(uuid);
   const name = containerName(identifier);
@@ -112,8 +121,21 @@ export async function createBot({ uuid, identifier, image, startup_command, inst
     const logPath = path.join(dir, 'install.log');
     const logHandle = await fs.open(logPath, 'w');
     const installStream = await installContainer.attach({ stream: true, stdout: true, stderr: true });
+    // Docker multiplexed streams can split a frame across chunks — buffer and
+    // parse complete frames so install.log never contains binary header bytes.
+    let frameBuf = Buffer.alloc(0);
     installStream.on('data', (chunk) => {
-      logHandle.write(stripDockerStream(chunk)).catch(() => {});
+      frameBuf = Buffer.concat([frameBuf, chunk]);
+      let out = '';
+      let i = 0;
+      while (i + 8 <= frameBuf.length) {
+        const size = frameBuf.readUInt32BE(i + 4);
+        if (size <= 0 || i + 8 + size > frameBuf.length) break;
+        out += frameBuf.slice(i + 8, i + 8 + size).toString('utf8');
+        i += 8 + size;
+      }
+      if (i > 0) frameBuf = frameBuf.slice(i);
+      if (out) logHandle.write(out).catch(() => {});
     });
     await installContainer.start();
     await installContainer.wait();
@@ -590,6 +612,26 @@ export async function attachConsole(uuid, onData, onClose) {
   stream.on('end', onClose);
   stream.on('error', onClose);
   return stream;
+}
+
+// Stream the server's install log (tail -F) so the console can show live
+// install output while the main container doesn't exist yet (any egg).
+// Returns { stop } to kill the tail.
+export async function streamInstallLog(uuid, onData, onClose) {
+  const logPath = path.join(botDir(uuid), 'install.log');
+  // The install step may not have started writing yet — wait briefly.
+  for (let i = 0; i < 10; i++) {
+    try { await fs.access(logPath); break; } catch {}
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  try { await fs.access(logPath); } catch { throw new Error('No install log yet'); }
+  const tail = spawn('tail', ['-F', '-n', '+1', logPath]);
+  tail.stdout.on('data', (chunk) => onData(chunk));
+  tail.on('error', () => {});
+  tail.on('close', () => { try { onClose && onClose(); } catch {} });
+  return {
+    stop: () => { try { tail.kill('SIGTERM'); } catch {} },
+  };
 }
 
 // ---- Backups ----
