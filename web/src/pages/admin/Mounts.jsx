@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Card, EmptyState, GlowButton, Icons, SectionHeader, useConfirm } from '../../components/ui.jsx';
+import { Card, EmptyState, GlowButton, Icons, SectionHeader, useConfirm, useToast } from '../../components/ui.jsx';
 
 export default function Mounts() {
+  const toast = useToast();
   const [mounts, setMounts] = useState([]);
   const confirm = useConfirm();
   const [showForm, setShowForm] = useState(false);
@@ -26,6 +27,7 @@ export default function Mounts() {
       await api.admin.createMount(form);
       setForm({ name: '', description: '', source: '', target: '', read_only: false });
       setShowForm(false);
+      toast.push('Mount created');
       load();
     } catch (err) {
       setError(err.message);
