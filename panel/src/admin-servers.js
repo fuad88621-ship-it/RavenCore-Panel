@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { requireAdmin } from './auth.js';
 import { agentRequest, agentRequestFor, agentRequestStream } from './agent-client.js';
 import { config, agentInternalUrl } from './config.js';
+import { deleteDatabase } from './admin-databases.js';
 
 async function logActivity(serverId, userId, action, metadata = {}) {
   try {
@@ -288,6 +289,12 @@ export async function adminServerRoutes(fastify) {
       await agentRequestFor(server.uuid, `/servers/${server.uuid}`, 'DELETE');
     } catch (e) {
       console.error('[admin] agent delete failed:', e.message);
+    }
+    // Drop the server's MariaDB databases — the FK cascades the rows, but the
+    // actual MySQL databases would otherwise be orphaned forever.
+    const dbs = await q(`SELECT * FROM server_databases WHERE server_id = $1`, [server.id]);
+    for (const db of dbs) {
+      try { await deleteDatabase(db); } catch (e) { console.error('[admin] db cleanup failed:', e.message); }
     }
     await q(`UPDATE allocations SET server_id = NULL WHERE server_id = $1`, [server.id]);
     await q(`DELETE FROM servers WHERE id = $1`, [server.id]);
