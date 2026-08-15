@@ -71,10 +71,10 @@ export async function agentRequestFor(uuid, path, method = 'GET', body, opts = {
   return agentRequest(path, method, body, { ...opts, node });
 }
 
-export function consoleToken(server) {
+export function consoleToken(server, secret) {
   return jwt.sign(
     { sub: server.uuid, server: server.identifier, scope: 'console', exp: Math.floor(Date.now() / 1000) + 600 },
-    config.security.console_secret,
+    secret || config.security.console_secret,
     { algorithm: 'HS256' }
   );
 }
