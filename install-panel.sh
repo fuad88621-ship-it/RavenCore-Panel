@@ -31,6 +31,15 @@ ok()    { echo -e "${C_GREEN}[✓]${C_RESET} $1"; }
 warn()  { echo -e "${C_YELLOW}[!]${C_RESET} $1"; }
 fail()  { echo -e "${C_RED}[✗]${C_RESET} $1"; exit 1; }
 
+# Random hex secret — falls back to /dev/urandom if openssl is missing.
+gen_secret() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex "$1"
+  else
+    tr -dc 'a-f0-9' < /dev/urandom | head -c "$(( $1 * 2 ))"
+  fi
+}
+
 PANEL_DIR="/opt/raven"
 REPO_URL="https://github.com/fuad88621-ship-it/RavenCore-Panel.git"
 
@@ -130,7 +139,7 @@ read -rp "  Admin username (default: admin): " ADMIN_USER
 read -rsp "  Admin password (blank = random): " ADMIN_PASS
 echo ""
 if [ -z "$ADMIN_PASS" ]; then
-  ADMIN_PASS="$(openssl rand -base64 12 | tr -d '/+=' | head -c 16)"
+  ADMIN_PASS="$(gen_secret 8 | head -c 16)"
   warn "Generated admin password: ${ADMIN_PASS}"
 fi
 
@@ -165,10 +174,10 @@ ok "Source downloaded to ${PANEL_DIR}"
 
 # ── Generate .env ─────────────────────────────────────────────────
 info "Generating secrets…"
-DB_PASSWORD="$(openssl rand -hex 16)"
-SESSION_SECRET="$(openssl rand -hex 32)"
-AGENT_TOKEN="$(openssl rand -hex 32)"
-CONSOLE_SECRET="$(openssl rand -hex 32)"
+DB_PASSWORD="$(gen_secret 16)"
+SESSION_SECRET="$(gen_secret 32)"
+AGENT_TOKEN="$(gen_secret 32)"
+CONSOLE_SECRET="$(gen_secret 32)"
 cat > "$PANEL_DIR/.env" <<EOF
 DB_PASSWORD=${DB_PASSWORD}
 SESSION_SECRET=${SESSION_SECRET}
