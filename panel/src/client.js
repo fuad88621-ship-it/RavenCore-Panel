@@ -375,6 +375,59 @@ export async function clientRoutes(fastify) {
     return { hits, server_version: serverVersion };
   });
 
+  // Full plugin details from Modrinth (click a plugin in the marketplace).
+  fastify.get('/api/client/servers/:id/plugins/:projectId', { preHandler: requireAuth }, async (req, reply) => {
+    const server = await getServerForUser(req, reply);
+    if (!server) return;
+    if (!can(server, 'files')) return reply.code(403).send({ error: 'Missing permission: files' });
+    const { projectId } = req.params;
+    const res = await fetch(`https://api.modrinth.com/v2/project/${encodeURIComponent(projectId)}`);
+    if (!res.ok) return reply.code(502).send({ error: 'Failed to fetch plugin info' });
+    const p = await res.json();
+    // Author name comes from the project's team (the project API only gives a team id)
+    let author = null;
+    try {
+      if (p.team) {
+        const tres = await fetch(`https://api.modrinth.com/v2/team/${encodeURIComponent(p.team)}/members`);
+        if (tres.ok) {
+          const members = await tres.json();
+          const owner = (members || []).find((m) => m.role === 'Owner') || (members || [])[0];
+          author = owner && owner.user ? owner.user.username : null;
+        }
+      }
+    } catch {}
+    // Latest downloadable version
+    let version = null;
+    try {
+      const vres = await fetch(`https://api.modrinth.com/v2/project/${encodeURIComponent(projectId)}/version`);
+      if (vres.ok) {
+        const versions = await vres.json();
+        version = (versions || []).find((v) => v.files && v.files.length > 0) || null;
+      }
+    } catch {}
+    let serverVersion = null;
+    try { serverVersion = (JSON.parse(server.env || '{}') || {}).VERSION || null; } catch {}
+    const compat = await pluginCompatible(projectId, serverVersion);
+    return {
+      project_id: p.id, slug: p.slug, title: p.title, description: p.description,
+      body: p.body || '', icon_url: p.icon_url, author: author || p.author || null,
+      downloads: p.downloads, followers: p.followers, license: p.license || null,
+      categories: p.categories || [], updated: p.updated, published: p.published,
+      source_url: p.source_url, issues_url: p.issues_url, wiki_url: p.wiki_url, discord_url: p.discord_url,
+      latest_version: version ? {
+        version_number: version.version_number,
+        game_versions: version.game_versions || [],
+        loaders: version.loaders || [],
+        date_published: version.date_published,
+        changelog: version.changelog || '',
+        filename: version.files && version.files[0] ? version.files[0].filename : null,
+        size: version.files && version.files[0] ? version.files[0].size : null,
+      } : null,
+      compatible: compat.compatible, compatible_version: compat.version,
+      server_version: serverVersion,
+    };
+  });
+
   fastify.get('/api/client/servers/:id/plugins', { preHandler: requireAuth }, async (req, reply) => {
     const server = await getServerForUser(req, reply);
     if (!server) return;
