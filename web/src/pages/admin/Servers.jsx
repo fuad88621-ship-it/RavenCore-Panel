@@ -3,7 +3,7 @@ import { api } from '../../api.js';
 import { useAuth } from '../../App.jsx';
 import { useDebouncedCallback } from '../../useDebounce.js';
 import NumberInput from '../../components/NumberInput.jsx';
-import { Card, GlowButton, Icons, MultiSelect, SectionHeader, Select, ShineCard, StatusBadge, cn, useConfirm } from '../../components/ui.jsx';
+import { Card, GlowButton, Icons, MultiSelect, SectionHeader, Select, ShineCard, StatusBadge, cn, useConfirm, useToast } from '../../components/ui.jsx';
 
 function Field({ label, hint, children }) {
   return (
@@ -30,6 +30,7 @@ function Toggle({ label, checked, onChange, hint }) {
 }
 
 function CreateServerForm({ onCreated }) {
+  const toast = useToast();
   const [nodes, setNodes] = useState([]);
   const [nests, setNests] = useState([]);
   const [eggs, setEggs] = useState([]);
@@ -139,6 +140,7 @@ function CreateServerForm({ onCreated }) {
     setError('');
     try {
       await api.admin.createServer({ ...form, env });
+      toast.push('Server created');
       onCreated();
     } catch (err) {
       setError(err.message);
