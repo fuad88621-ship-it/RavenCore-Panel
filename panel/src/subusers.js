@@ -48,8 +48,8 @@ export async function subuserRoutes(fastify) {
 
   fastify.patch('/api/client/subusers/:id', { preHandler: requireAuth }, async (req, reply) => {
     const su = await q1(
-      `SELECT su.* FROM server_subusers su JOIN servers sv ON sv.id = su.server_id WHERE su.id = $1 AND sv.user_id = $2`,
-      [req.params.id, req.user.id]
+      `SELECT su.* FROM server_subusers su JOIN servers sv ON sv.id = su.server_id WHERE su.id = $1 AND (sv.user_id = $2 OR $3)`,
+      [req.params.id, req.user.id, req.user.root_admin]
     );
     if (!su) return reply.code(404).send({ error: 'Sub-user not found' });
     const { permissions } = req.body || {};
@@ -62,8 +62,8 @@ export async function subuserRoutes(fastify) {
 
   fastify.delete('/api/client/subusers/:id', { preHandler: requireAuth }, async (req, reply) => {
     const su = await q1(
-      `SELECT su.* FROM server_subusers su JOIN servers sv ON sv.id = su.server_id WHERE su.id = $1 AND sv.user_id = $2`,
-      [req.params.id, req.user.id]
+      `SELECT su.* FROM server_subusers su JOIN servers sv ON sv.id = su.server_id WHERE su.id = $1 AND (sv.user_id = $2 OR $3)`,
+      [req.params.id, req.user.id, req.user.root_admin]
     );
     if (!su) return reply.code(404).send({ error: 'Sub-user not found' });
     await q(`DELETE FROM server_subusers WHERE id = $1`, [su.id]);
