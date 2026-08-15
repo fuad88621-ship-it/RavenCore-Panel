@@ -390,6 +390,22 @@ export async function getResources(uuid) {
   };
 }
 
+// Resources for ALL servers on this node in one call (used by the panel's
+// metrics sampler — 1 request per node instead of 1 per server, so a host
+// with 500 servers doesn't hammer the agent 500 times every 30s).
+export async function getAllResources() {
+  const containers = await docker.listContainers({ all: true });
+  const out = {};
+  for (const c of containers) {
+    const uuid = c.Labels && c.Labels['raven.uuid'];
+    if (!uuid || c.Labels['raven.install'] === 'true') continue;
+    try {
+      out[uuid] = await getResources(uuid);
+    } catch {}
+  }
+  return { servers: out };
+}
+
 // ---- Spec management ----
 
 export async function getContainerInfo(uuid) {
