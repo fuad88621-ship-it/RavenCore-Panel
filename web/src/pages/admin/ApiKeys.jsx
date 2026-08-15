@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { Card, GlowButton, Icons, SectionHeader, useConfirm } from '../../components/ui.jsx';
+import { Card, GlowButton, Icons, SectionHeader, useConfirm, useToast, useCopy } from '../../components/ui.jsx';
 
 const PERMISSIONS = ['*', 'servers.read', 'servers.create', 'servers.delete', 'servers.power', 'users.read', 'users.create', 'nodes.read', 'nodes.create', 'nodes.delete', 'node:create', 'locations.read', 'nests.read'];
 
 export default function ApiKeys() {
   const [keys, setKeys] = useState([]);
   const confirm = useConfirm();
+  const toast = useToast();
+  const copyText = useCopy();
   const [description, setDescription] = useState('');
   const [permissions, setPermissions] = useState(['*']);
   const [newKey, setNewKey] = useState(null);
@@ -29,6 +31,7 @@ export default function ApiKeys() {
       const d = await api.admin.createApiKey(description, permissions);
       setNewKey(d.key);
       setDescription('');
+      toast.push('API key created');
       load();
     } catch (err) {
       setError(err.message);
@@ -60,7 +63,7 @@ export default function ApiKeys() {
           <p className="mb-2 text-sm font-semibold text-emerald-300">Key created — copy it now, it won't be shown again:</p>
           <div className="flex items-center gap-2">
             <code className="flex-1 rounded-lg bg-black/40 px-3 py-2 font-mono text-sm text-emerald-300 break-all">{newKey}</code>
-            <button className="btn-ghost !px-3 !py-2" onClick={() => { navigator.clipboard.writeText(newKey); }} aria-label="Copy API key"><Icons.Copy className="h-4 w-4" /></button>
+            <button className="btn-ghost !px-3 !py-2" onClick={() => copyText(newKey, 'API key copied')} aria-label="Copy API key"><Icons.Copy className="h-4 w-4" /></button>
           </div>
         </Card>
       )}
