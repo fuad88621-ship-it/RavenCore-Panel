@@ -424,6 +424,19 @@ export async function updateSpec(uuid, patch) {
   return next;
 }
 
+// The agent's default gateway = the host. Bot ports are published on the
+// host, so gateway:hostPort reaches any bot container.
+export async function agentGateway() {
+  try {
+    const self = await docker.getContainer(process.env.HOSTNAME).inspect();
+    const nets = (self.NetworkSettings && self.NetworkSettings.Networks) || {};
+    for (const k of Object.keys(nets)) {
+      if (nets[k] && nets[k].Gateway) return nets[k].Gateway;
+    }
+  } catch {}
+  return null;
+}
+
 // Rebuild the container from spec (applies env / startup command changes).
 // Does NOT re-run the install step — that would wipe the server's setup.
 export async function recreateContainer(uuid) {
