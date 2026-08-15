@@ -126,8 +126,8 @@ export async function scheduleRoutes(fastify) {
 
   fastify.patch('/api/client/schedules/:id', { preHandler: requireAuth }, async (req, reply) => {
     const sched = await q1(
-      `SELECT s.* FROM schedules s JOIN servers sv ON sv.id = s.server_id WHERE s.id = $1 AND sv.user_id = $2`,
-      [req.params.id, req.user.id]
+      `SELECT s.* FROM schedules s JOIN servers sv ON sv.id = s.server_id WHERE s.id = $1 AND (sv.user_id = $2 OR $3)`,
+      [req.params.id, req.user.id, req.user.root_admin]
     );
     if (!sched) return reply.code(404).send({ error: 'Schedule not found' });
     const { name, cron, is_active } = req.body || {};
@@ -140,8 +140,8 @@ export async function scheduleRoutes(fastify) {
 
   fastify.delete('/api/client/schedules/:id', { preHandler: requireAuth }, async (req, reply) => {
     const sched = await q1(
-      `SELECT s.* FROM schedules s JOIN servers sv ON sv.id = s.server_id WHERE s.id = $1 AND sv.user_id = $2`,
-      [req.params.id, req.user.id]
+      `SELECT s.* FROM schedules s JOIN servers sv ON sv.id = s.server_id WHERE s.id = $1 AND (sv.user_id = $2 OR $3)`,
+      [req.params.id, req.user.id, req.user.root_admin]
     );
     if (!sched) return reply.code(404).send({ error: 'Schedule not found' });
     await q(`DELETE FROM schedules WHERE id = $1`, [sched.id]);
@@ -151,8 +151,8 @@ export async function scheduleRoutes(fastify) {
   // Tasks
   fastify.post('/api/client/schedules/:id/tasks', { preHandler: requireAuth }, async (req, reply) => {
     const sched = await q1(
-      `SELECT s.* FROM schedules s JOIN servers sv ON sv.id = s.server_id WHERE s.id = $1 AND sv.user_id = $2`,
-      [req.params.id, req.user.id]
+      `SELECT s.* FROM schedules s JOIN servers sv ON sv.id = s.server_id WHERE s.id = $1 AND (sv.user_id = $2 OR $3)`,
+      [req.params.id, req.user.id, req.user.root_admin]
     );
     if (!sched) return reply.code(404).send({ error: 'Schedule not found' });
     const { action, payload } = req.body || {};
@@ -167,8 +167,8 @@ export async function scheduleRoutes(fastify) {
 
   fastify.delete('/api/client/schedule-tasks/:id', { preHandler: requireAuth }, async (req, reply) => {
     const task = await q1(
-      `SELECT t.* FROM schedule_tasks t JOIN schedules s ON s.id = t.schedule_id JOIN servers sv ON sv.id = s.server_id WHERE t.id = $1 AND sv.user_id = $2`,
-      [req.params.id, req.user.id]
+      `SELECT t.* FROM schedule_tasks t JOIN schedules s ON s.id = t.schedule_id JOIN servers sv ON sv.id = s.server_id WHERE t.id = $1 AND (sv.user_id = $2 OR $3)`,
+      [req.params.id, req.user.id, req.user.root_admin]
     );
     if (!task) return reply.code(404).send({ error: 'Task not found' });
     await q(`DELETE FROM schedule_tasks WHERE id = $1`, [task.id]);
