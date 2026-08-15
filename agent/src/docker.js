@@ -105,13 +105,12 @@ export async function createBot({ uuid, identifier, image, startup_command, inst
       User: 'root',
       WorkingDir: '/mnt/server',
       HostConfig: {
-        // Install scripts write to /mnt/server (Pterodactyl convention); the
-        // same host dir is mounted at mount_target for runtime, so files
-        // installed here are visible when the server starts.
+        // Install scripts (apt/dpkg/pip/npm) need the default capabilities —
+        // dropping ALL caps breaks apt's setgroups/seteuid and every egg's
+        // install step fails with "Operation not permitted". The install
+        // container is one-off and removed right after, so this is safe.
         Binds: [`${dir}:/mnt/server`],
         NetworkMode: net.id,
-        CapDrop: ['ALL'],
-        SecurityOpt: ['no-new-privileges:true'],
       },
       Cmd: ['sh', '-c', cleanInstall],
       AttachStdout: true,
