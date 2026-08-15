@@ -1704,6 +1704,137 @@ function NetworkTab({ server }) {
   );
 }
 
+// Strip basic markdown to plain text for the plugin body preview.
+function mdToText(md) {
+  return (md || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[[^\]]*\]\([^)]*\)/g, '$1')
+    .replace(/[#>*_`~|-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function PluginDetailModal({ plugin, detail, loading, onClose, onInstall, installing, installed }) {
+  if (!plugin) return null;
+  const d = detail;
+  const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString());
+  const fmtDate = (s) => (s ? new Date(s).toLocaleDateString() : '—');
+  const isInstalled = d && d.latest_version && d.latest_version.filename
+    ? (installed || []).some((f) => f.name.toLowerCase().startsWith((d.title || '').toLowerCase().split(/[^a-z0-9]/)[0]))
+    : false;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-zinc-900 p-5 shadow-2xl">
+        <div className="flex items-start gap-3">
+          {d && d.icon_url ? (
+            <img src={d.icon_url} alt="" className="h-12 w-12 shrink-0 rounded-xl" />
+          ) : (
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/[0.04] text-zinc-400"><Icons.Box className="h-6 w-6" /></span>
+          )}
+          <div className="min-w-0 flex-1">
+            <h3 className="text-lg font-bold text-white">{d ? d.title : plugin.title}</h3>
+            <p className="text-xs text-zinc-500">by {d ? d.author : plugin.author}</p>
+          </div>
+          <button className="btn-ghost !px-2 !py-1 text-xs" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+
+        {loading ? (
+          <div className="mt-6 space-y-3">
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
+        ) : d ? (
+          <>
+            <p className="mt-4 text-sm text-zinc-300">{d.description}</p>
+
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Downloads</p>
+                <p className="mt-1 text-sm font-semibold text-white">{fmt(d.downloads)}</p>
+              </div>
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Followers</p>
+                <p className="mt-1 text-sm font-semibold text-white">{fmt(d.followers)}</p>
+              </div>
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">License</p>
+                <p className="mt-1 text-sm font-semibold text-white">{d.license ? d.license.id || d.license.name || '—' : '—'}</p>
+              </div>
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Published</p>
+                <p className="mt-1 text-sm font-semibold text-white">{fmtDate(d.published)}</p>
+              </div>
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Updated</p>
+                <p className="mt-1 text-sm font-semibold text-white">{fmtDate(d.updated)}</p>
+              </div>
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Categories</p>
+                <p className="mt-1 truncate text-sm font-semibold text-white">{(d.categories || []).join(', ') || '—'}</p>
+              </div>
+            </div>
+
+            {d.latest_version && (
+              <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.03] p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Latest version</p>
+                <p className="mt-1 text-sm font-semibold text-white">{d.latest_version.version_number}</p>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  MC {(d.latest_version.game_versions || []).join(', ') || '—'}
+                  {' · '}{(d.latest_version.loaders || []).join(', ') || '—'}
+                  {' · '}{d.latest_version.filename || '—'}
+                </p>
+                {d.latest_version.changelog && (
+                  <p className="mt-2 max-h-24 overflow-y-auto whitespace-pre-wrap text-[11px] text-zinc-400">{mdToText(d.latest_version.changelog)}</p>
+                )}
+              </div>
+            )}
+
+            {d.compatible ? (
+              <span className="chip mt-3 border border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
+                ✓ Works on {d.compatible_version || 'your version'}
+              </span>
+            ) : (
+              <span className="chip mt-3 border border-amber-500/20 bg-amber-500/10 text-amber-300">
+                ⚠ May not work on your version
+              </span>
+            )}
+
+            {d.body && (
+              <div className="mt-4">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">About</p>
+                <p className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-zinc-400">{mdToText(d.body)}</p>
+              </div>
+            )}
+
+            {(d.source_url || d.issues_url || d.wiki_url || d.discord_url) && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {d.source_url && <a className="btn-ghost !px-3 !py-1.5 text-xs" href={d.source_url} target="_blank" rel="noreferrer">Source</a>}
+                {d.issues_url && <a className="btn-ghost !px-3 !py-1.5 text-xs" href={d.issues_url} target="_blank" rel="noreferrer">Issues</a>}
+                {d.wiki_url && <a className="btn-ghost !px-3 !py-1.5 text-xs" href={d.wiki_url} target="_blank" rel="noreferrer">Wiki</a>}
+                {d.discord_url && <a className="btn-ghost !px-3 !py-1.5 text-xs" href={d.discord_url} target="_blank" rel="noreferrer">Discord</a>}
+              </div>
+            )}
+
+            <div className="mt-5 flex items-center gap-2">
+              {installing === d.project_id ? (
+                <span className="text-sm text-zinc-400">Installing…</span>
+              ) : (
+                <button className="btn-primary flex-1" onClick={() => onInstall(d)}>Install plugin</button>
+              )}
+              <button className="btn-ghost" onClick={() => { if (d.source_url) window.open(d.source_url, '_blank'); }}>View on Modrinth</button>
+            </div>
+          </>
+        ) : (
+          <p className="mt-6 text-sm text-red-400">Failed to load plugin details.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PluginsTab({ server, resetKey }) {
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState([]);
@@ -1712,6 +1843,9 @@ function PluginsTab({ server, resetKey }) {
   const [installing, setInstalling] = useState(null);
   const [installProgress, setInstallProgress] = useState(null); // { project_id, pct }
   const [error, setError] = useState('');
+  const [selected, setSelected] = useState(null); // plugin being viewed
+  const [detail, setDetail] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -1754,6 +1888,20 @@ function PluginsTab({ server, resetKey }) {
     }
   }
 
+  async function openDetail(p) {
+    setSelected(p);
+    setDetail(null);
+    setLoadingDetail(true);
+    try {
+      const d = await api.pluginInfo(server.id, p.project_id);
+      setDetail(d);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoadingDetail(false);
+    }
+  }
+
   async function install(p) {
     setInstalling(p.project_id);
     setInstallProgress({ project_id: p.project_id, pct: 0 });
@@ -1770,6 +1918,7 @@ function PluginsTab({ server, resetKey }) {
       setInstallProgress({ project_id: p.project_id, pct: 100 });
       toast.push(`Installed ${d.filename}`);
       await loadInstalled();
+      setSelected(null);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -1830,7 +1979,7 @@ function PluginsTab({ server, resetKey }) {
         {!searching && hits.length > 0 && (
           <div className="mt-3 space-y-2">
             {hits.map((p) => (
-              <div key={p.project_id} className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-3 transition hover:border-violet-500/30">
+              <div key={p.project_id} className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-3 transition hover:border-violet-500/30" onClick={() => openDetail(p)}>
                 {p.icon_url ? (
                   <img src={p.icon_url} alt="" className="h-9 w-9 shrink-0 rounded-lg" />
                 ) : (
@@ -1862,7 +2011,7 @@ function PluginsTab({ server, resetKey }) {
                 ) : (
                   <button
                     className="btn-primary !px-3 !py-1.5 text-xs shrink-0"
-                    onClick={() => install(p)}
+                    onClick={(e) => { e.stopPropagation(); install(p); }}
                   >
                     Install
                   </button>
@@ -1872,6 +2021,16 @@ function PluginsTab({ server, resetKey }) {
           </div>
         )}
       </div>
+
+      <PluginDetailModal
+        plugin={selected}
+        detail={detail}
+        loading={loadingDetail}
+        installed={installed}
+        installing={installing}
+        onClose={() => { setSelected(null); setDetail(null); }}
+        onInstall={(d) => install(d)}
+      />
     </div>
   );
 }
