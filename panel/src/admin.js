@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { q, q1, genUuid } from './db.js';
 import { requireAdmin } from './auth.js';
 import { createApiKey, listApiKeys, deleteApiKey } from './api-keys.js';
@@ -384,7 +385,9 @@ export async function adminRoutes(fastify) {
       const agentRes = await agentRequest(`/backup/download/${name}`, 'GET', undefined, { raw: true });
       reply.header('Content-Disposition', `attachment; filename="${name}"`);
       reply.type('application/gzip');
-      return agentRes.body;
+      // fetch() gives a WHATWG ReadableStream — Fastify can't stream that
+      // directly (it would send an empty body). Convert to a Node stream.
+      return Readable.fromWeb(agentRes.body);
     } catch (e) {
       return reply.code(500).send({ error: e.message });
     }
