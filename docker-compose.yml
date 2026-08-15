@@ -103,7 +103,7 @@ services:
     ports:
       - "2022:2022"
     environment:
-      NODE_OPTIONS: --max-old-space-size=256
+      NODE_OPTIONS: --max-old-space-size=512
       AGENT_TOKEN: ${AGENT_TOKEN}
       CONSOLE_SECRET: ${CONSOLE_SECRET}
       BOT_DATA_DIR: /var/lib/raven/bots
