@@ -54,7 +54,31 @@ export async function applicationRoutes(fastify) {
     for (const v of variables) mergedEnv[v.env_variable] = v.default_value;
     for (const [k, val] of Object.entries(env || {})) mergedEnv[k] = val;
 
-    const finalStartup = startup_command || renderStartup(egg.startup_command, mergedEnv);
+    // Claim free allocations (excluding ports used by other nodes on the same
+    // host) so API-created servers actually get a port.
+    const freeAllocs = await q(
+      `SELECT a.* FROM allocations a
+       WHERE a.node_id = $1 AND a.server_id IS NULL
+       AND a.port NOT IN (
+         SELECT a2.port FROM allocations a2
+         JOIN servers s ON s.id = a2.server_id
+         JOIN nodes n ON n.id = a2.node_id
+         WHERE n.fqdn = (SELECT fqdn FROM nodes WHERE id = $1)
+           AND a2.port IS NOT NULL
+       )
+       ORDER BY a.port LIMIT $2`,
+      [node.id, allocCount]
+    );
+    if (allocCount > 0 && freeAllocs.length === 0) {
+      return reply.code(400).send({ error: 'Node has no free allocations. Add ports to it first.' });
+    }
+    const defaultPort = freeAllocs[0]?.port || null;
+
+    const finalStartup = startup_command || renderStartup(egg.startup_command, mergedEnv, {
+      SERVER_MEMORY: String(mem),
+      SERVER_IP: node.fqdn,
+      SERVER_PORT: String(defaultPort || ''),
+    });
     const finalImage = docker_image || egg.docker_image;
     const uuid = genUuid();
     const identifier = genIdentifier();
@@ -69,12 +93,18 @@ export async function applicationRoutes(fastify) {
        mem, cpuPct, disk, swap, ioVal, dbCount, allocCount, finalStartup, finalImage, JSON.stringify(mergedEnv), sftpPassword]
     );
 
+    // Claim the allocations for this server
+    for (const a of freeAllocs) {
+      await q(`UPDATE allocations SET server_id = $1 WHERE id = $2`, [server.id, a.id]);
+    }
+
     agentRequest('/servers', 'POST', {
       uuid, identifier, image: finalImage, startup_command: finalStartup,
       install_command: egg.skip_install ? null : egg.default_install_command,
       memory_mb: mem, disk_mb: disk, cpu: cpuPct, swap_mb: swap, io: ioVal, env: mergedEnv, mounts: [],
       mount_target: egg.mount_target || '/home/container',
       sftp_password: sftpPassword,
+      allocation_port: defaultPort,
     }, { node }).then(async (res) => {
       await q(`UPDATE servers SET container_id = $1, status = 'offline' WHERE id = $2`, [res.container_id, server.id]);
     }).catch(async (e) => {
