@@ -323,6 +323,21 @@ export async function adminServerRoutes(fastify) {
     if (used.disk + server.disk_mb > diskCap) return reply.code(400).send({ error: 'Destination node out of disk' });
     if (used.cpu + server.cpu > cpuCap) return reply.code(400).send({ error: 'Destination node out of CPU' });
 
+    // Verify the destination agent is reachable AND supports transfers BEFORE
+    // stopping the source server — a bad/outdated destination must never leave
+    // the server offline.
+    let destHealth = null;
+    try {
+      destHealth = await agentRequest('/health', 'GET', undefined, { node: dest });
+    } catch (e) {
+      return reply.code(400).send({ error: `Destination agent unreachable: ${e.message}` });
+    }
+    if (!destHealth.features || !destHealth.features.includes('transfer')) {
+      return reply.code(400).send({
+        error: 'Destination agent is outdated (no transfer support). Update it on the node with: bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh) --update',
+      });
+    }
+
     const wasRunning = server.status === 'running';
     const wasSuspended = server.status === 'suspended';
 
