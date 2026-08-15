@@ -1,29 +1,31 @@
 {
-    "_comment": "Minecraft Vanilla egg for RavenCore",
+    "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PTERODACTYL PANEL - PTERODACTYL.IO",
     "meta": {
         "version": "PTDL_v2",
         "update_url": null
     },
-    "exported_at": "2024-01-01T00:00:00-00:00",
+    "exported_at": "2024-02-13T17:26:13+0000",
     "name": "Minecraft (Vanilla)",
-    "author": "raven",
-    "description": "Pure vanilla Minecraft Java server from Mojang. No plugins, no mods — the original experience.",
+    "author": "sneaky@sneakyhub.com",
+    "description": "Minecraft vanilla server.",
     "features": null,
     "docker_images": {
-        "ghcr.io/parkervcp/yolks:java_25": "ghcr.io/parkervcp/yolks:java_25"
+        "ghcr.io\/parkervcp\/yolks:java_25": "ghcr.io\/parkervcp\/yolks:java_25",
+        "ghcr.io\/parkervcp\/yolks:java_21": "ghcr.io\/parkervcp\/yolks:java_21",
+        "ghcr.io\/parkervcp\/yolks:java_17": "ghcr.io\/parkervcp\/yolks:java_17"
     },
     "file_denylist": [],
     "startup": "PORT={{SERVER_PORT}}\nif [ -f server.properties ]; then sed -i \"s/^server-port=.*/server-port=${PORT}/\" server.properties; else echo \"server-port=${PORT}\" > server.properties; fi\njava -Xms128M -XX:MaxRAMPercentage=95.0 -Dterminal.jline=false -Dterminal.ansi=true -jar {{SERVER_JAR}}",
     "config": {
         "files": "{}",
-        "startup": "{\"done\": \"Done\"}",
+        "startup": "{\r\n    \"done\": \"Done\"\r\n}",
         "logs": "{}",
         "stop": "^C"
     },
     "scripts": {
         "installation": {
-            "script": "#!/bin/bash\n# Vanilla Installation Script\n\napt-get update -qq\napt-get install -y -qq curl jq\n\nif [ ! -d /mnt/server ]; then\n    mkdir -p /mnt/server\nfi\n\ncd /mnt/server\n\nif [ -z \"${VERSION}\" ]; then\n    VERSION=\"latest\"\nfi\n\nif [ -z \"${SERVER_JAR}\" ]; then\n    SERVER_JAR=\"server.jar\"\nfi\n\n# Resolve \"latest\" to the newest release\nif [ \"${VERSION}\" = \"latest\" ]; then\n    VERSION=$(curl -s https://launchermeta.mojang.com/mc/game/version_manifest_v2.json | jq -r '.latest.release')\nfi\n\n# Find the version's manifest URL\nURL=$(curl -s https://launchermeta.mojang.com/mc/game/version_manifest_v2.json | jq -r --arg v \"${VERSION}\" '.versions[] | select(.id == $v) | .url' | head -1)\n\nif [ -z \"${URL}\" ] || [ \"${URL}\" = \"null\" ]; then\n    echo \"Version ${VERSION} not found\"\n    exit 1\nfi\n\n# Get the server jar download URL and fetch it\nJAR_URL=$(curl -s \"${URL}\" | jq -r '.downloads.server.url')\ncurl -o ${SERVER_JAR} \"${JAR_URL}\"\n\n# Accept the EULA so the server can start\necho \"eula=true\" > eula.txt\n\necho \"Vanilla ${VERSION} downloaded\"",
-            "container": "ghcr.io/parkervcp/yolks:debian",
+            "script": "#!/bin/bash\r\n# Vanilla Installation Script\r\n\r\napt-get update -qq\r\napt-get install -y -qq curl jq\r\n\r\nif [ ! -d /mnt/server ]; then\r\n    mkdir -p /mnt/server\r\nfi\r\n\r\ncd /mnt/server\r\n\r\nif [ -z \"${VERSION}\" ]; then\r\n    VERSION=\"latest\"\r\nfi\r\n\r\nif [ -z \"${SERVER_JAR}\" ]; then\r\n    SERVER_JAR=\"server.jar\"\r\nfi\r\n\r\n# Resolve \"latest\" to the newest release\r\nif [ \"${VERSION}\" = \"latest\" ]; then\r\n    VERSION=$(curl -s https://launchermeta.mojang.com/mc/game/version_manifest_v2.json | jq -r '.latest.release')\r\nfi\r\n\r\n# Find the version's manifest URL\r\nURL=$(curl -s https://launchermeta.mojang.com/mc/game/version_manifest_v2.json | jq -r --arg v \"${VERSION}\" '.versions[] | select(.id == $v) | .url' | head -1)\r\n\r\nif [ -z \"${URL}\" ] || [ \"${URL}\" = \"null\" ]; then\r\n    echo \"Version ${VERSION} not found\"\r\n    exit 1\r\nfi\r\n\r\n# Get the server jar download URL and fetch it\r\nJAR_URL=$(curl -s \"${URL}\" | jq -r '.downloads.server.url')\r\ncurl -o ${SERVER_JAR} \"${JAR_URL}\"\r\n\r\n# Accept the EULA so the server can start\r\necho \"eula=true\" > eula.txt\r\n\r\necho \"Vanilla ${VERSION} downloaded\"",
+            "container": "ghcr.io\/parkervcp\/yolks:debian",
             "entrypoint": "bash"
         }
     },
