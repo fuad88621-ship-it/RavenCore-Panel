@@ -1919,6 +1919,9 @@ export default function ServerDetail() {
     return () => { mounted = false; clearInterval(t); };
   }, [server?.id]);
 
+  // Plugins (Modrinth marketplace) only makes sense for Minecraft eggs.
+  const isMinecraft = /minecraft/i.test(server?.egg_name || '');
+
   const tabs = useMemo(() => [
     { id: 'console', label: 'Console', icon: <Icons.Terminal className="h-4 w-4" /> },
     { id: 'files', label: 'Files', icon: <Icons.Folder className="h-4 w-4" /> },
@@ -1927,11 +1930,11 @@ export default function ServerDetail() {
     { id: 'users', label: 'Users', icon: <Icons.Users className="h-4 w-4" /> },
     { id: 'backups', label: 'Backups', icon: <Icons.Save className="h-4 w-4" /> },
     { id: 'network', label: 'Network', icon: <Icons.Node className="h-4 w-4" /> },
-    { id: 'plugins', label: 'Plugins', icon: <Icons.Box className="h-4 w-4" /> },
+    ...(isMinecraft ? [{ id: 'plugins', label: 'Plugins', icon: <Icons.Box className="h-4 w-4" /> }] : []),
     { id: 'startup', label: 'Startup', icon: <Icons.Play className="h-4 w-4" /> },
     { id: 'activity', label: 'Activity', icon: <Icons.Clock className="h-4 w-4" /> },
     { id: 'settings', label: 'Settings', icon: <Icons.Gear className="h-4 w-4" /> },
-  ], []);
+  ], [isMinecraft]);
 
   const address = server?.allocation_port
     ? `${(server?.allocation_ip && server.allocation_ip !== '0.0.0.0') ? server.allocation_ip : (server?.node_fqdn || '0.0.0.0')}:${server.allocation_port}`
@@ -2067,7 +2070,7 @@ export default function ServerDetail() {
           {tab === 'users' && <UsersTab server={server} resetKey={resetKey} />}
           {tab === 'backups' && <BackupsTab server={server} resetKey={resetKey} />}
           {tab === 'network' && <NetworkTab server={server} resetKey={resetKey} />}
-          {tab === 'plugins' && <PluginsTab server={server} resetKey={resetKey} />}
+          {tab === 'plugins' && isMinecraft && <PluginsTab server={server} resetKey={resetKey} />}
           {tab === 'startup' && <StartupTab server={server} resetKey={resetKey} />}
           {tab === 'activity' && <ActivityTab server={server} resetKey={resetKey} />}
           {tab === 'settings' && <SettingsTab server={server} onDeleted={() => navigate('/')} resetKey={resetKey} />}
