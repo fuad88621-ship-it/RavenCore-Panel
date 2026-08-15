@@ -40,6 +40,32 @@ gen_secret() {
   fi
 }
 
+# ── Cloudflare API helpers (auto-DNS) ──────────────────────────────
+# Uses the user's Cloudflare API token to create A records automatically,
+# so they don't have to touch DNS at all.
+cf_api() {
+  # $1 = method, $2 = path, $3 = body (optional)
+  local method="$1" path="$2" body="${3:-}"
+  if [ -n "$body" ]; then
+    curl -fsSL -X "$method" "https://api.cloudflare.com/client/v4$path" \
+      -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+      -d "$body" 2>/dev/null
+  else
+    curl -fsSL -X "$method" "https://api.cloudflare.com/client/v4$path" \
+      -H "Authorization: Bearer $CF_TOKEN" 2>/dev/null
+  fi
+}
+
+cf_get_zone_id() {
+  local domain="$1"
+  cf_api GET "/zones?name=$domain" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['result'][0]['id'] if d.get('result') else '')" 2>/dev/null
+}
+
+cf_create_a_record() {
+  local zone_id="$1" name="$2" ip="$3"
+  cf_api POST "/zones/$zone_id/dns_records" "{\"type\":\"A\",\"name\":\"$name\",\"content\":\"$ip\",\"ttl\":1,\"proxied\":false}" | python3 -c "import json,sys; d=json.load(sys.stdin); print('ok' if d.get('success') else 'ERR: '+str(d.get('errors')))" 2>/dev/null
+}
+
 PANEL_DIR="/opt/raven"
 REPO_URL="https://github.com/fuad88621-ship-it/RavenCore-Panel.git"
 
@@ -128,12 +154,48 @@ fi
 
 # ── Questions ──────────────────────────────────────────────────────
 echo ""
-echo -e "  ${C_BOLD}Domain setup${C_RESET} — both domains must point to this VPS (A records)."
-read -rp "  Panel domain (e.g. panel.example.com): " PANEL_DOMAIN
-[ -z "$PANEL_DOMAIN" ] && fail "Panel domain is required."
-DEFAULT_NODE="node.${PANEL_DOMAIN#*.}"
-read -rp "  Node domain (default: ${DEFAULT_NODE}): " NODE_DOMAIN
-[ -z "$NODE_DOMAIN" ] && NODE_DOMAIN="$DEFAULT_NODE"
+echo -e "  ${C_BOLD}Domain setup${C_RESET}"
+echo -e "  You can let Cloudflare create the DNS records automatically (you only need"
+echo -e "  a Cloudflare API token + your domain), or set them up manually."
+echo ""
+read -rp "  Use Cloudflare to auto-create DNS records? [y/N]: " USE_CF
+if [ "$USE_CF" = "y" ] || [ "$USE_CF" = "Y" ]; then
+  read -rsp "  Cloudflare API token: " CF_TOKEN
+  echo ""
+  read -rp "  Your domain (e.g. ravenshop.store): " CF_DOMAIN
+  [ -z "$CF_DOMAIN" ] && fail "Domain is required."
+  VPS_IP="$(curl -fsSL --max-time 5 https://api.ipify.org 2>/dev/null || echo '')"
+  [ -z "$VPS_IP" ] && fail "Could not detect this VPS's IP."
+  info "Looking up your Cloudflare zone…"
+  ZONE_ID="$(cf_get_zone_id "$CF_DOMAIN")"
+  if [ -z "$ZONE_ID" ]; then
+    # Maybe they typed a subdomain — try the parent.
+    PARENT="${CF_DOMAIN#*.}"
+    ZONE_ID="$(cf_get_zone_id "$PARENT")"
+    [ -z "$ZONE_ID" ] && fail "Could not find a Cloudflare zone for ${CF_DOMAIN}. Check the token and domain."
+  fi
+  PANEL_DOMAIN="panel.${CF_DOMAIN}"
+  NODE_DOMAIN="node.${CF_DOMAIN}"
+  info "Creating A records: ${PANEL_DOMAIN} + ${NODE_DOMAIN} → ${VPS_IP}"
+  R1="$(cf_create_a_record "$ZONE_ID" "$PANEL_DOMAIN" "$VPS_IP")"
+  R2="$(cf_create_a_record "$ZONE_ID" "$NODE_DOMAIN" "$VPS_IP")"
+  echo "$R1" | grep -q '^ok' && ok "${PANEL_DOMAIN} → ${VPS_IP}" || warn "${PANEL_DOMAIN}: $R1"
+  echo "$R2" | grep -q '^ok' && ok "${NODE_DOMAIN} → ${VPS_IP}" || warn "${NODE_DOMAIN}: $R2"
+  ok "DNS records created. Waiting for propagation…"
+  for i in $(seq 1 12); do
+    DNS_IP="$(dig +short "$PANEL_DOMAIN" 2>/dev/null | grep -E '^[0-9.]+$' | head -1)"
+    [ "$DNS_IP" = "$VPS_IP" ] && break
+    sleep 5
+  done
+  ok "DNS ready (${PANEL_DOMAIN} → ${VPS_IP})"
+else
+  echo -e "  ${C_BOLD}Manual DNS${C_RESET} — both domains must point to this VPS (A records)."
+  read -rp "  Panel domain (e.g. panel.example.com): " PANEL_DOMAIN
+  [ -z "$PANEL_DOMAIN" ] && fail "Panel domain is required."
+  DEFAULT_NODE="node.${PANEL_DOMAIN#*.}"
+  read -rp "  Node domain (default: ${DEFAULT_NODE}): " NODE_DOMAIN
+  [ -z "$NODE_DOMAIN" ] && NODE_DOMAIN="$DEFAULT_NODE"
+fi
 
 echo ""
 echo -e "  ${C_BOLD}Admin account${C_RESET}"
