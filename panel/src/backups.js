@@ -42,8 +42,8 @@ export async function backupRoutes(fastify) {
 
   fastify.get('/api/client/backups/:id/download', { preHandler: requireAuth }, async (req, reply) => {
     const backup = await q1(
-      `SELECT b.*, s.uuid AS server_uuid FROM backups b JOIN servers s ON s.id = b.server_id WHERE b.id = $1 AND s.user_id = $2`,
-      [req.params.id, req.user.id]
+      `SELECT b.*, s.uuid AS server_uuid FROM backups b JOIN servers s ON s.id = b.server_id WHERE b.id = $1 AND (s.user_id = $2 OR $3)`,
+      [req.params.id, req.user.id, req.user.root_admin]
     );
     if (!backup) return reply.code(404).send({ error: 'Backup not found' });
     const url = `${process.env.AGENT_INTERNAL_URL || 'http://agent:8080'}/servers/${backup.server_uuid}/backups/${backup.uuid}/download`;
@@ -57,8 +57,8 @@ export async function backupRoutes(fastify) {
 
   fastify.post('/api/client/backups/:id/restore', { preHandler: requireAuth }, async (req, reply) => {
     const backup = await q1(
-      `SELECT b.*, s.uuid AS server_uuid FROM backups b JOIN servers s ON s.id = b.server_id WHERE b.id = $1 AND s.user_id = $2`,
-      [req.params.id, req.user.id]
+      `SELECT b.*, s.uuid AS server_uuid FROM backups b JOIN servers s ON s.id = b.server_id WHERE b.id = $1 AND (s.user_id = $2 OR $3)`,
+      [req.params.id, req.user.id, req.user.root_admin]
     );
     if (!backup) return reply.code(404).send({ error: 'Backup not found' });
     await agentRequestFor(backup.server_uuid, `/servers/${backup.server_uuid}/backups/${backup.uuid}/restore`, 'POST');
@@ -67,8 +67,8 @@ export async function backupRoutes(fastify) {
 
   fastify.delete('/api/client/backups/:id', { preHandler: requireAuth }, async (req, reply) => {
     const backup = await q1(
-      `SELECT b.*, s.uuid AS server_uuid FROM backups b JOIN servers s ON s.id = b.server_id WHERE b.id = $1 AND s.user_id = $2`,
-      [req.params.id, req.user.id]
+      `SELECT b.*, s.uuid AS server_uuid FROM backups b JOIN servers s ON s.id = b.server_id WHERE b.id = $1 AND (s.user_id = $2 OR $3)`,
+      [req.params.id, req.user.id, req.user.root_admin]
     );
     if (!backup) return reply.code(404).send({ error: 'Backup not found' });
     try {
