@@ -125,7 +125,15 @@ export async function clientRoutes(fastify) {
     const { action } = req.body || {};
     if (!['start', 'stop', 'restart', 'kill'].includes(action)) return reply.code(400).send({ error: 'Invalid action' });
     if (server.status === 'suspended') return reply.code(403).send({ error: 'Server suspended' });
-    const res = await agentRequestFor(server.uuid, `/servers/${server.uuid}/power`, 'POST', { action });
+    let res;
+    try {
+      res = await agentRequestFor(server.uuid, `/servers/${server.uuid}/power`, 'POST', { action });
+    } catch (e) {
+      // Agent errors (e.g. container already stopped) shouldn't be a 500 —
+      // return a friendly 400 so the frontend can toast it instead of
+      // showing a full-page error.
+      return reply.code(400).send({ error: e.message.replace(/^Error: /, '') });
+    }
     const status = action === 'start' ? 'running' : (action === 'stop' || action === 'kill') ? 'offline' : server.status;
     await q(`UPDATE servers SET status = $1 WHERE id = $2`, [status, server.id]);
     await logActivity(server.id, req.user.id, `server.${action}`);
