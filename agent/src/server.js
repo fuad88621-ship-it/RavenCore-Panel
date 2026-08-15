@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { config } from './config.js';
 import * as docker from './docker.js';
 import * as backup from './backup.js';
+import { pingMinecraft } from './mc-ping.js';
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -296,6 +297,30 @@ app.patch('/servers/:uuid/spec', async (req, res) => {
 app.get('/servers/:uuid/resources', async (req, res) => {
   try {
     res.json(await docker.getResources(req.params.uuid));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Minecraft status ping — returns live player count for the server's
+// allocation port. Works for any server speaking the Minecraft protocol.
+app.get('/servers/:uuid/mc-ping', async (req, res) => {
+  try {
+    const container = await docker.findMainContainer(req.params.uuid);
+    if (!container) return res.json({ online: false, error: 'not_found' });
+    const info = await container.inspect();
+    const ports = (info.NetworkSettings && info.NetworkSettings.Ports) || {};
+    const tcpPort = Object.keys(ports).find((p) => p.endsWith('/tcp'));
+    if (!tcpPort) return res.json({ online: false, error: 'no_port' });
+    const hostPort = ports[tcpPort][0] && ports[tcpPort][0].HostPort;
+    if (!hostPort) return res.json({ online: false, error: 'no_port' });
+    // The bot is on its own isolated bridge network — the agent can't reach
+    // its container IP directly. But the port is published on the host, and
+    // the agent's own network gateway IS the host. Ping gateway:hostPort.
+    const gateway = await docker.agentGateway();
+    if (!gateway) return res.json({ online: false, error: 'no_gateway' });
+    const result = await pingMinecraft(gateway, parseInt(hostPort, 10), 3000);
+    res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
