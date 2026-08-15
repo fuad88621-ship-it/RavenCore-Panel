@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../../api.js';
 import NumberInput from '../../components/NumberInput.jsx';
-import { Badge, Card, GlowButton, Icons, SectionHeader, Select, ShineCard, useConfirm, useToast, cn } from '../../components/ui.jsx';
+import { Badge, Card, GlowButton, Icons, SectionHeader, Select, ShineCard, useConfirm, useToast, useCopy, cn } from '../../components/ui.jsx';
 
 function formatMb(mb) {
   if (!mb) return '0 MB';
@@ -143,6 +143,7 @@ function NodeDetail({ node, onBack }) {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const savedTimer = useRef(null);
+  const toast = useToast();
 
   useEffect(() => { setForm({ ...node }); }, [node.id]);
 
@@ -155,6 +156,7 @@ function NodeDetail({ node, onBack }) {
       const d = await api.admin.updateNode(node.id, form);
       setForm(d.node);
       setSaved(true);
+      toast.push('Node settings saved');
       if (savedTimer.current) clearTimeout(savedTimer.current);
       savedTimer.current = setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -253,6 +255,8 @@ function NodeDetail({ node, onBack }) {
 }
 
 export default function Nodes() {
+  const copyText = useCopy();
+  const toast = useToast();
   const [nodes, setNodes] = useState([]);
   const [locations, setLocations] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -315,6 +319,7 @@ export default function Nodes() {
     try {
       await api.admin.createNode(form);
       setShowForm(false);
+      toast.push('Node created');
       load();
     } catch (err) {
       setError(err.message);
@@ -372,7 +377,7 @@ export default function Nodes() {
           </div>
           <button
             className="btn-ghost !px-3 !py-1.5 text-xs"
-            onClick={() => { navigator.clipboard?.writeText('bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh)'); }}
+            onClick={() => copyText('bash <(curl -fsSL https://raw.githubusercontent.com/fuad88621-ship-it/RavenCore-Panel/main/install.sh)', 'Install command copied')}
           >
             <Icons.Copy className="h-3.5 w-3.5" /> Copy command
           </button>
