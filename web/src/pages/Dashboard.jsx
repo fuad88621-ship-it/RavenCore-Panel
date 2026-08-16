@@ -179,9 +179,9 @@ function QuickActionCard({ to, title, desc, icon, gradient }) {
 
 const QUICK_ACTIONS = [
   { to: '/#servers', title: 'Servers', desc: 'Manage your servers', gradient: 'from-emerald-500/30 to-teal-500/15', icon: SlotIcon },
-  { to: '/admin/settings', title: 'Settings', desc: 'Panel configuration', gradient: 'from-amber-500/25 to-orange-500/10', icon: Icons.Gear({ className: 'h-5 w-5' }) },
-  { to: '/admin/nodes', title: 'Nodes', desc: 'Manage nodes & allocations', gradient: 'from-sky-500/25 to-blue-500/10', icon: Icons.Node({ className: 'h-5 w-5' }) },
-  { to: '/admin/users', title: 'Users', desc: 'Manage accounts', gradient: 'from-fuchsia-500/25 to-purple-500/10', icon: Icons.Users({ className: 'h-5 w-5' }) },
+  { to: '/admin/settings', title: 'Settings', desc: 'Panel configuration', gradient: 'from-amber-500/25 to-orange-500/10', icon: Icons.Gear({ className: 'h-5 w-5' }), adminOnly: true },
+  { to: '/admin/nodes', title: 'Nodes', desc: 'Manage nodes & allocations', gradient: 'from-sky-500/25 to-blue-500/10', icon: Icons.Node({ className: 'h-5 w-5' }), adminOnly: true },
+  { to: '/admin/users', title: 'Users', desc: 'Manage accounts', gradient: 'from-fuchsia-500/25 to-purple-500/10', icon: Icons.Users({ className: 'h-5 w-5' }), adminOnly: true },
 ];
 
 const PAGE_SIZE = 24;
@@ -361,7 +361,7 @@ export default function Dashboard() {
       <section className="space-y-5">
         <SectionHeader title="Quick actions" />
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {QUICK_ACTIONS.map((qa, i) => (
+          {QUICK_ACTIONS.filter((qa) => !qa.adminOnly || user?.root_admin).map((qa, i) => (
             <motion.div key={qa.title} initial={{ opacity: 0, y: 12, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.4, delay: 0.05 + i * 0.05, ease: [0.22, 1, 0.36, 1] }}>
               <QuickActionCard {...qa} />
             </motion.div>
