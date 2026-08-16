@@ -26,7 +26,7 @@ export async function registerUser(username, email, password) {
 
 export async function loginUser(identifier, password) {
   const user = await q1(
-    `SELECT * FROM users WHERE email = $1 OR username = $1`,
+    `SELECT * FROM users WHERE email = $1 OR LOWER(username) = $1`,
     [identifier.toLowerCase()]
   );
   if (!user) return null;

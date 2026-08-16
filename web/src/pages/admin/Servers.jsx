@@ -360,8 +360,8 @@ function AssignModal({ server, onAssign, onCancel }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
       <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 font-semibold text-white">Assign server</h3>
-        <p className="mb-4 text-sm text-zinc-400">Choose a new owner for <b className="text-white">{server.name}</b>.</p>
+        <h3 className="mb-4 font-semibold text-white">Transfer server</h3>
+        <p className="mb-4 text-sm text-zinc-400">Choose the new owner for <b className="text-white">{server.name}</b>. The current owner loses access immediately.</p>
         <form onSubmit={submit} className="space-y-4">
           <div className="relative">
             <input
@@ -391,7 +391,7 @@ function AssignModal({ server, onAssign, onCancel }) {
             {selected && <p className="mt-1 text-xs text-emerald-400">✓ Selected: {selected.username}</p>}
           </div>
           <div className="flex gap-2">
-            <button className="btn-primary flex-1" disabled={busy || !selected}>{busy ? 'Assigning…' : 'Assign'}</button>
+            <button className="btn-primary flex-1" disabled={busy || !selected}>{busy ? 'Transferring…' : 'Transfer'}</button>
             <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
           </div>
         </form>
@@ -931,9 +931,7 @@ export default function Servers() {
                 <td className="px-4 py-3 text-xs text-zinc-400">{s.memory_mb}MB · {s.cpu}% · {s.disk_mb}MB</td>
                 <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
-                  {!s.owner_username && (
-                    <button className="btn-primary !px-2 !py-1 text-xs mr-1" onClick={() => setAssigning(s)} aria-label={`Assign owner to server ${s.name}`}>Assign</button>
-                  )}
+                  <button className="btn-primary !px-2 !py-1 text-xs mr-1" onClick={() => setAssigning(s)} aria-label={`Transfer server ${s.name} to another user`}>Transfer</button>
                   {s.status === 'running' ? (
                     <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => power(s.id, 'stop')} aria-label={`Stop server ${s.name}`}>Stop</button>
                   ) : (
