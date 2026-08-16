@@ -780,6 +780,17 @@ export default function Servers() {
     }
   }
 
+  async function reinstall(s) {
+    if (!await confirm(`Reinstall server ${s.name}? This wipes dependencies and re-runs the install command, but keeps the server configuration.`)) return;
+    try {
+      await api.admin.reinstallServer(s.id);
+      toast.push('Reinstall started');
+      load(search);
+    } catch (e) {
+      toast.push(e.message || 'Reinstall failed', 'error');
+    }
+  }
+
   if (loading) {
     return (
       <div>
@@ -931,15 +942,16 @@ export default function Servers() {
                 <td className="px-4 py-3 text-xs text-zinc-400">{s.memory_mb}MB · {s.cpu}% · {s.disk_mb}MB</td>
                 <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
-                  <button className="btn-primary !px-2 !py-1 text-xs mr-1" onClick={() => setAssigning(s)} aria-label={`Transfer server ${s.name} to another user`}>Transfer</button>
+                  <button className="btn-primary !px-2 !py-1 text-xs mr-1" onClick={() => setAssigning(s)} aria-label={`Change owner of server ${s.name}`}>Change owner</button>
                   {s.status === 'running' ? (
                     <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => power(s.id, 'stop')} aria-label={`Stop server ${s.name}`}>Stop</button>
                   ) : (
                     <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => power(s.id, 'start')} disabled={s.status === 'installing'} aria-label={`Start server ${s.name}`}>Start</button>
                   )}
+                  <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => reinstall(s)} aria-label={`Reinstall server ${s.name}`}>Reinstall</button>
                   <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => toggleSuspend(s)} aria-label={`${s.status === 'suspended' ? 'Unsuspend' : 'Suspend'} server ${s.name}`}>{s.status === 'suspended' ? 'Unsuspend' : 'Suspend'}</button>
                   <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => setEditing(s)} aria-label={`Edit limits for ${s.name}`}>Edit</button>
-                  <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => openTransfer(s)} aria-label={`Transfer server ${s.name}`}>Transfer</button>
+                  <button className="btn-ghost !px-2 !py-1 text-xs mr-1" onClick={() => openTransfer(s)} aria-label={`Move server ${s.name} to another node`}>Move node</button>
                   <button className="btn-danger !px-2 !py-1 text-xs" onClick={() => remove(s)} aria-label={`Delete server ${s.name}`}>Delete</button>
                 </td>
               </tr>
