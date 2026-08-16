@@ -8,6 +8,7 @@ import Register from './pages/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import ServerDetail from './pages/ServerDetail.jsx';
 import Admin from './pages/admin/Admin.jsx';
+import CommandPalette from './components/CommandPalette.jsx';
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -410,8 +411,19 @@ function Layout({ children }) {
       <div className="lg:pl-[280px]">
         <MobileNav user={user} onLogout={logout} nav={nav} />
         <AnnouncementBanner />
-        <div className="hidden fixed right-4 top-4 z-40 lg:right-6 lg:top-5 lg:block">
-          <AlertsBell />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))}
+            className="hidden items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-zinc-400 transition hover:text-white lg:flex"
+            aria-label="Open command palette"
+          >
+            <Icons.Search className="h-4 w-4" />
+            Search…
+            <span className="rounded border border-white/[0.08] bg-white/[0.05] px-1 text-[10px]">Ctrl K</span>
+          </button>
+          <div className="hidden fixed right-4 top-4 z-40 lg:right-6 lg:top-5 lg:block">
+            <AlertsBell />
+          </div>
         </div>
         <main className="mx-auto w-full max-w-7xl px-4 pb-16 pt-6 sm:px-6 sm:pt-8 lg:px-8">
           <AnimatePresence mode="wait">
@@ -557,6 +569,7 @@ export default function App() {
         </SettingsContext.Provider>
       </AuthContext.Provider>
       </ConfirmProvider>
+      <CommandPalette />
       <Toasts toasts={toastApi.toasts} onDismiss={toastApi.dismiss} />
       {/* RavenCore attribution — required by the license, do not remove */}
       <div className="pointer-events-none fixed bottom-1.5 left-1/2 z-[90] -translate-x-1/2 text-[10px] text-zinc-600">
