@@ -654,6 +654,13 @@ export const Icons = {
       <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" />
     </svg>
   ),
+  Info: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4" strokeWidth={2.4} />
+      <path d="M12 8h.01" strokeWidth={2.4} />
+    </svg>
+  ),
   Server: (p) => (
     <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
       <rect x="3" y="4" width="18" height="7" rx="1.5" /><rect x="3" y="13" width="18" height="7" rx="1.5" />

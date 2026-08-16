@@ -347,6 +347,36 @@ function AlertsBell() {
   );
 }
 
+function AnnouncementBanner() {
+  const settings = useSettings();
+  const text = (settings['panel.announcement'] || '').trim();
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem('dismissedAnnouncement') === text; } catch { return false; }
+  });
+  useEffect(() => {
+    try {
+      const was = localStorage.getItem('dismissedAnnouncement');
+      setDismissed(was === text);
+    } catch {}
+  }, [text]);
+  if (!text || dismissed) return null;
+  return (
+    <div className="relative z-30 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2.5 text-center text-sm text-amber-200">
+      <span className="inline-flex items-center gap-2">
+        <Icons.Info className="h-4 w-4 shrink-0" />
+        <span dangerouslySetInnerHTML={{ __html: text.replace(/\n/g, '<br />') }} />
+      </span>
+      <button
+        onClick={() => { try { localStorage.setItem('dismissedAnnouncement', text); } catch {} setDismissed(true); }}
+        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-amber-300/70 hover:text-amber-100"
+        aria-label="Dismiss announcement"
+      >
+        <Icons.X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 function Layout({ children }) {
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -379,6 +409,7 @@ function Layout({ children }) {
       <Sidebar user={user} onLogout={logout} nav={nav} />
       <div className="lg:pl-[280px]">
         <MobileNav user={user} onLogout={logout} nav={nav} />
+        <AnnouncementBanner />
         <div className="hidden fixed right-4 top-4 z-40 lg:right-6 lg:top-5 lg:block">
           <AlertsBell />
         </div>
@@ -461,9 +492,12 @@ function AuthLayout({ children }) {
   return (
     <div className="relative min-h-screen">
       <AuroraBackground />
-      <main className="relative z-10 flex min-h-screen items-center justify-center p-4">
-        {children}
-      </main>
+      <div className="relative z-10 w-full">
+        <AnnouncementBanner />
+        <main className="relative z-10 flex min-h-screen items-center justify-center p-4">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

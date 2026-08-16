@@ -1,0 +1,64 @@
+{
+    "_comment": "DO NOT EDIT: FILE GENERATED AUTOMATICALLY BY PTERODACTYL PANEL - PTERODACTYL.IO",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2024-02-13T17:26:13+0000",
+    "name": "Minecraft (Fabric)",
+    "author": "RavenCore",
+    "description": "Minecraft Fabric modded server (optimized startup).",
+    "features": null,
+    "docker_images": {
+        "ghcr.io\/parkervcp\/yolks:java_25": "ghcr.io\/parkervcp\/yolks:java_25",
+        "ghcr.io\/parkervcp\/yolks:java_21": "ghcr.io\/parkervcp\/yolks:java_21",
+        "ghcr.io\/parkervcp\/yolks:java_17": "ghcr.io\/parkervcp\/yolks:java_17"
+    },
+    "file_denylist": [],
+    "startup": "PORT={{SERVER_PORT}}\nif [ -f server.properties ]; then sed -i \"s\/^server-port=.*/server-port=${PORT}\/\" server.properties; else echo \"server-port=${PORT}\" > server.properties; fi\ncd \/mnt\/server\njava -Xms128M -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -Dterminal.jline=false -Dterminal.ansi=true -jar {{SERVER_JAR}} nogui",
+    "config": {
+        "files": "{}",
+        "startup": "{\r\n    \"done\": \"Done\"\r\n}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin\/bash\r\n# Fabric Installation Script\r\n\r\napt-get update -qq\r\napt-get install -y -qq curl jq\r\n\r\nif [ ! -d \/mnt\/server ]; then\r\n    mkdir -p \/mnt\/server\r\nfi\r\n\r\ncd \/mnt\/server\r\n\r\nif [ -z \"${VERSION}\" ]; then\r\n    VERSION=\"latest\"\r\nfi\r\n\r\nif [ -z \"${LOADER_VERSION}\" ]; then\r\n    LOADER_VERSION=\"latest\"\r\nfi\r\n\r\nif [ -z \"${SERVER_JAR}\" ]; then\r\n    SERVER_JAR=\"server.jar\"\r\nfi\r\n\r\n# Resolve latest Minecraft version\r\nif [ \"${VERSION}\" = \"latest\" ]; then\r\n    VERSION=$(curl -s https:\/\/meta.fabricmc.net\/v2\/versions\/game | jq -r '.[0].version')\r\nfi\r\n\r\n# Resolve latest loader version\r\nif [ \"${LOADER_VERSION}\" = \"latest\" ]; then\r\n    LOADER_VERSION=$(curl -s https:\/\/meta.fabricmc.net\/v2\/versions\/loader | jq -r '.[0].version')\r\nfi\r\n\r\n# Resolve latest installer version\r\nINSTALLER_VERSION=$(curl -s https:\/\/meta.fabricmc.net\/v2\/versions\/installer | jq -r '.[0].version')\r\n\r\n# Download the Fabric server jar\r\nURL=\"https:\/\/meta.fabricmc.net\/v2\/versions\/loader\/${VERSION}\/${LOADER_VERSION}\/${INSTALLER_VERSION}\/server\/jar\"\r\ncurl -o ${SERVER_JAR} -fsSL \"${URL}\"\r\n\r\n# Accept EULA\r\necho \"eula=true\" > eula.txt\r\n\r\necho \"Fabric ${VERSION} loader ${LOADER_VERSION} downloaded\"",
+            "container": "ghcr.io\/parkervcp\/yolks:debian",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Server Jar",
+            "description": "The name of the server jar file.",
+            "env_variable": "SERVER_JAR",
+            "default_value": "server.jar",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:20",
+            "field_type": "text"
+        },
+        {
+            "name": "Minecraft Version",
+            "description": "The version of Minecraft to install (e.g. 1.20.4, latest).",
+            "env_variable": "VERSION",
+            "default_value": "latest",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:20",
+            "field_type": "text"
+        },
+        {
+            "name": "Loader Version",
+            "description": "The Fabric loader version (latest or a specific version).",
+            "env_variable": "LOADER_VERSION",
+            "default_value": "latest",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|max:20",
+            "field_type": "text"
+        }
+    ]
+}

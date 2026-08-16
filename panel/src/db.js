@@ -302,7 +302,7 @@ async function seedDefaults() {
   const eggFiles = readdirSync(eggsDir).filter((f) => f.endsWith('.json'));
   for (const file of eggFiles) {
     const base = pathMod.basename(file, '.json');
-    const isMc = ['minecraft', 'vanilla'].includes(base);
+    const isMc = ['minecraft', 'vanilla', 'purpur', 'fabric', 'spigot', 'forge', 'bedrock'].includes(base);
     await importEgg(base, isMc ? mcNestId : nestId);
   }
 
