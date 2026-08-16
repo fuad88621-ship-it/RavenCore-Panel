@@ -34,7 +34,7 @@ export default function Register() {
 
   if (!registrationOpen) {
     return (
-      <div className="relative flex min-h-screen items-center justify-center px-4">
+      <div className="relative flex min-h-screen w-full items-center justify-center px-4">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="w-full max-w-sm">
           <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-8 text-center">
             <Icons.Lock className="mx-auto mb-4 h-10 w-10 text-zinc-500" />
@@ -48,7 +48,7 @@ export default function Register() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center px-4">
+    <div className="relative flex min-h-screen w-full items-center justify-center px-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
