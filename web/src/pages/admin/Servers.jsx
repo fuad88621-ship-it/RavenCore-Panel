@@ -3,7 +3,7 @@ import { api } from '../../api.js';
 import { useAuth } from '../../App.jsx';
 import { useDebouncedCallback } from '../../useDebounce.js';
 import NumberInput from '../../components/NumberInput.jsx';
-import { Card, GlowButton, Icons, MultiSelect, SectionHeader, Select, ShineCard, StatusBadge, cn, useConfirm, useToast } from '../../components/ui.jsx';
+import { Card, GlowButton, Icons, MultiSelect, SectionHeader, Select, ShineCard, Skeleton, StatusBadge, cn, useConfirm, useToast } from '../../components/ui.jsx';
 
 function Field({ label, hint, children }) {
   return (
@@ -618,7 +618,9 @@ export default function Servers() {
   const [selected, setSelected] = useState(new Set());
   const [progress, setProgress] = useState(null);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
   const confirm = useConfirm();
+  const toast = useToast();
 
   async function load(s) {
     try {
@@ -626,6 +628,8 @@ export default function Servers() {
       setServers(d.servers);
     } catch (e) {
       setError(e.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -725,14 +729,22 @@ export default function Servers() {
   }
 
   async function bulkSuspend(suspend) {
-    for (const id of Array.from(selected)) {
+    const ids = Array.from(selected);
+    let failed = 0;
+    for (const id of ids) {
       try {
         if (suspend) await api.admin.suspendServer(id);
         else await api.admin.unsuspendServer(id);
       } catch (e) {
-        setError(e.message);
+        failed++;
       }
     }
+    toast.push(
+      failed === 0
+        ? `${ids.length} server${ids.length === 1 ? '' : 's'} ${suspend ? 'suspended' : 'unsuspended'}`
+        : `${ids.length - failed}/${ids.length} succeeded, ${failed} failed`,
+      failed === 0 ? 'success' : 'error'
+    );
     setSelected(new Set());
     load(search);
   }
@@ -742,7 +754,7 @@ export default function Servers() {
       await api.admin.serverPower(id, action);
       load(search);
     } catch (e) {
-      setError(e.message);
+      toast.push(e.message || 'Action failed', 'error');
     }
   }
 
@@ -750,9 +762,10 @@ export default function Servers() {
     try {
       if (s.status === 'suspended') await api.admin.unsuspendServer(s.id);
       else await api.admin.suspendServer(s.id);
+      toast.push(s.status === 'suspended' ? 'Server unsuspended' : 'Server suspended');
       load(search);
     } catch (e) {
-      setError(e.message);
+      toast.push(e.message || 'Action failed', 'error');
     }
   }
 
@@ -760,10 +773,24 @@ export default function Servers() {
     if (!await confirm(`Delete server ${s.name}? This permanently deletes all its files.`)) return;
     try {
       await api.admin.deleteServer(s.id);
+      toast.push('Server deleted');
       load(search);
     } catch (e) {
-      setError(e.message);
+      toast.push(e.message || 'Delete failed', 'error');
     }
+  }
+
+  if (loading) {
+    return (
+      <div>
+        <SectionHeader title="Servers" sub="Create and manage all servers." />
+        <div className="space-y-2">
+          <Skeleton className="h-11 w-full rounded-xl" />
+          <Skeleton className="h-11 w-full rounded-xl" />
+          <Skeleton className="h-11 w-full rounded-xl" />
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -1677,7 +1677,7 @@ function NetworkTab({ server }) {
         <h3 className="mb-3 font-semibold text-white">SFTP</h3>
         {sftp ? (
           <Card className="space-y-2">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div><label className="label">Host</label><input className="input font-mono" value={sftp.host} readOnly /></div>
               <div><label className="label">Port</label><input className="input font-mono" value={sftp.port} readOnly /></div>
               <div><label className="label">Username</label><input className="input font-mono" value={sftp.username} readOnly /></div>

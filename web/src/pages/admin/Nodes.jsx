@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../../api.js';
 import NumberInput from '../../components/NumberInput.jsx';
-import { Badge, Card, GlowButton, Icons, SectionHeader, Select, ShineCard, useConfirm, useToast, useCopy, cn } from '../../components/ui.jsx';
+import { Badge, Card, GlowButton, Icons, SectionHeader, Select, ShineCard, Skeleton, useConfirm, useToast, useCopy, cn } from '../../components/ui.jsx';
 
 function formatMb(mb) {
   if (!mb) return '0 MB';
@@ -45,9 +45,11 @@ function AllocationsTab({ node }) {
     try {
       await api.admin.addAllocation(node.id, ip, +port);
       setPort('');
+      toast.push('Allocation added');
       load();
     } catch (err) {
       setError(err.message);
+      toast.push(err.message || 'Add failed', 'error');
     }
   }
 
@@ -73,9 +75,11 @@ function AllocationsTab({ node }) {
     if (!await confirm(`Delete allocation ${a.ip}:${a.port}?`)) return;
     try {
       await api.admin.deleteAllocation(a.id);
+      toast.push('Allocation deleted');
       load();
     } catch (err) {
       setError(err.message);
+      toast.push(err.message || 'Delete failed', 'error');
     }
   }
 
@@ -375,7 +379,7 @@ function NodeDetail({ node, onBack }) {
           <Card className="space-y-4">
             <h3 className="font-semibold text-white">Configuration</h3>
             <div><label className="label">Daemon Server File Directory</label><input className="input font-mono" value={form.file_directory || '/var/lib/raven/bots'} onChange={(e) => setForm({ ...form, file_directory: e.target.value })} /></div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <div><label className="label">Total Memory (MiB)</label><NumberInput value={form.memory_mb} onChange={(n) => setForm({ ...form, memory_mb: n })} /></div>
               <div><label className="label">Memory Over-Allocation %</label><NumberInput value={form.memory_overallocate} onChange={(n) => setForm({ ...form, memory_overallocate: n })} /></div>
               <div><label className="label">CPU Cores</label><NumberInput value={form.cpu_cores} onChange={(n) => setForm({ ...form, cpu_cores: n })} /></div>
@@ -427,6 +431,7 @@ export default function Nodes() {
     cpu_cores: 4, cpu_overallocate: 0, daemon_token: '',
   });
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [openSections, setOpenSections] = useState({ general: true, connection: true, resources: true, security: true });
   const [health, setHealth] = useState([]);
@@ -456,6 +461,8 @@ export default function Nodes() {
       setLocations(l.locations);
     } catch (e) {
       setError(e.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -490,9 +497,10 @@ export default function Nodes() {
   async function toggle(n) {
     try {
       await api.admin.updateNode(n.id, { enabled: !n.enabled });
+      toast.push(n.enabled ? 'Node disabled' : 'Node enabled');
       load();
     } catch (err) {
-      setError(err.message);
+      toast.push(err.message || 'Update failed', 'error');
     }
   }
 
@@ -500,15 +508,29 @@ export default function Nodes() {
     if (!await confirm(`Delete node ${n.name}?`)) return;
     try {
       await api.admin.deleteNode(n.id);
+      toast.push('Node deleted');
       load();
     } catch (err) {
-      setError(err.message);
+      toast.push(err.message || 'Delete failed', 'error');
     }
   }
 
   const healthById = Object.fromEntries(health.map((h) => [h.id, h]));
 
   if (selected) return <NodeDetail node={selected} onBack={() => setSelected(null)} />;
+
+  if (loading) {
+    return (
+      <div>
+        <SectionHeader title="Nodes" sub="The machines that run your servers. Create local or remote nodes." />
+        <Skeleton className="mb-6 h-28 w-full rounded-2xl" />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Skeleton className="h-44 w-full rounded-2xl" />
+          <Skeleton className="h-44 w-full rounded-2xl" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
