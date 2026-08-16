@@ -2197,42 +2197,77 @@ export default function ServerDetail() {
   }
 
   return (
-    <div>
+    <div className="space-y-5">
       <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-300">
         <Icons.Back className="h-4 w-4" /> Back to dashboard
       </Link>
 
-      <div className="mb-6 mt-3 flex flex-wrap items-center gap-3">
-        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/5 ring-1 ring-white/10">
-          <Icons.Server className="h-5 w-5 text-violet-300" />
-        </span>
-        <div className="min-w-0">
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-white">
-            <span className="truncate">{server.name}</span>
-            <StatusBadge status={server.status} />
-          </h1>
-          <p className="text-xs text-zinc-500">
-            {server.egg_name} · {server.memory_mb}MB · {server.cpu}% CPU · <span className="font-mono">{server.identifier}</span>
-            {isMinecraft && mc && mc.online && (
-              <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-400 ring-1 ring-emerald-500/20">
-                👥 {mc.players}/{mc.max_players} online
+      {/* Server control header */}
+      <Card className="relative overflow-hidden p-5 sm:p-6">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-violet-500/40 via-fuchsia-500/30 to-transparent" />
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="relative">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/30 to-fuchsia-500/10 ring-1 ring-white/10 shadow-[0_0_30px_rgb(139_92_246/0.2)]">
+                <Icons.Server className="h-7 w-7 text-violet-200" />
               </span>
+              <span className={cn(
+                'absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-[#0b0b0f]',
+                server.status === 'running' ? 'bg-emerald-400' : server.status === 'suspended' ? 'bg-red-400' : 'bg-amber-400'
+              )}>
+                {server.status === 'running' && <span className="status-ping absolute h-full w-full rounded-full bg-emerald-400 opacity-70" />}
+              </span>
+            </div>
+            <div className="min-w-0">
+              <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold text-white sm:text-3xl">
+                <span className="truncate">{server.name}</span>
+                <StatusBadge status={server.status} />
+              </h1>
+              <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.04] px-2 py-0.5 ring-1 ring-white/[0.06]">
+                  <Icons.Egg className="h-3 w-3" />
+                  {server.egg_name}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.04] px-2 py-0.5 ring-1 ring-white/[0.06]">
+                  <Icons.Cpu className="h-3 w-3" />
+                  {server.cpu}%
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.04] px-2 py-0.5 ring-1 ring-white/[0.06]">
+                  <Icons.Ram className="h-3 w-3" />
+                  {server.memory_mb}MB
+                </span>
+                <span className="font-mono text-zinc-600">{server.identifier}</span>
+              </p>
+              {isMinecraft && mc && mc.online && (
+                <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-400 ring-1 ring-emerald-500/20">
+                  👥 {mc.players}<span className="text-emerald-500/70">/{mc.max_players}</span> online
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {can('console') && (server.status === 'running' ? (
+              <button className="btn-ghost min-h-[44px]" onClick={() => power('stop')}><Icons.Stop className="h-4 w-4" /> Stop</button>
+            ) : (
+              <button className="btn-primary min-h-[44px]" onClick={() => power('start')} disabled={server.status === 'installing'}><Icons.Play className="h-4 w-4" /> Start</button>
+            ))}
+            {can('console') && <button className="btn-ghost min-h-[44px]" onClick={() => power('restart')} disabled={server.status === 'installing'}><Icons.Restart className="h-4 w-4" /> Restart</button>}
+            {can('console') && <button className="btn-danger min-h-[44px]" onClick={() => power('kill')}><Icons.Kill className="h-4 w-4" /> Kill</button>}
+            {address && (
+              <button
+                onClick={() => navigator.clipboard?.writeText(address).then(() => toast.push('Address copied'))}
+                className="btn-ghost min-h-[44px]"
+                title="Copy server address"
+              >
+                <Icons.Copy className="h-4 w-4" /> {address}
+              </button>
             )}
-          </p>
+          </div>
         </div>
-      </div>
+      </Card>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        {can('console') && (server.status === 'running' ? (
-          <button className="btn-ghost min-h-[44px]" onClick={() => power('stop')}><Icons.Stop className="h-4 w-4" /> Stop</button>
-        ) : (
-          <button className="btn-primary min-h-[44px]" onClick={() => power('start')} disabled={server.status === 'installing'}><Icons.Play className="h-4 w-4" /> Start</button>
-        ))}
-        {can('console') && <button className="btn-ghost min-h-[44px]" onClick={() => power('restart')} disabled={server.status === 'installing'}><Icons.Restart className="h-4 w-4" /> Restart</button>}
-        {can('console') && <button className="btn-danger min-h-[44px]" onClick={() => power('kill')}><Icons.Kill className="h-4 w-4" /> Kill</button>}
-      </div>
-
-      <div className={cn('mb-4 flex gap-1 overflow-x-auto border-b border-white/[0.06]', 'scrollbar-none')}>
+      <div className={cn('flex gap-1 overflow-x-auto border-b border-white/[0.06]', 'scrollbar-none')}>
         {tabs.map((t) => (
           <button
             key={t.id}

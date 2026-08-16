@@ -167,6 +167,13 @@ function MobileNav({ user, onLogout, nav }) {
           <span className="text-sm font-bold text-white">{panelName}</span>
         </Link>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))}
+            className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-2 text-zinc-400 transition hover:text-white lg:hidden"
+            aria-label="Open command palette"
+          >
+            <Icons.Search className="h-5 w-5" />
+          </button>
           <AlertsBell />
           <button
             onClick={() => setOpen(true)}
