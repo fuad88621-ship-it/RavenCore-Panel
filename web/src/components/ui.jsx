@@ -480,11 +480,15 @@ export function SkeletonCard() {
 // ── Empty state ──────────────────────────────────────────────
 export function EmptyState({ icon, title, sub, action }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.02] py-16 text-center">
-      {icon && <div className="mb-4 text-5xl">{icon}</div>}
-      <h3 className="mb-1 text-lg font-semibold text-white">{title}</h3>
-      {sub && <p className="max-w-sm text-sm text-zinc-500">{sub}</p>}
-      {action && <div className="mt-5">{action}</div>}
+    <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/[0.08] bg-white/[0.02] px-6 py-16 text-center">
+      {icon && (
+        <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.04] ring-1 ring-white/[0.06]">
+          {icon}
+        </div>
+      )}
+      <h3 className="mb-1.5 text-lg font-semibold text-white">{title}</h3>
+      {sub && <p className="max-w-xs text-sm leading-relaxed text-zinc-500">{sub}</p>}
+      {action && <div className="mt-6">{action}</div>}
     </div>
   );
 }
@@ -659,6 +663,24 @@ export const Icons = {
       <circle cx="12" cy="12" r="10" />
       <path d="M12 16v-4" strokeWidth={2.4} />
       <path d="M12 8h.01" strokeWidth={2.4} />
+    </svg>
+  ),
+  User: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 20a8 8 0 0 1 16 0" />
+    </svg>
+  ),
+  Lock: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+    </svg>
+  ),
+  Mail: (p) => (
+    <svg viewBox="0 0 24 24" className={p.className} {...stroke}>
+      <rect x="3" y="6" width="18" height="12" rx="2" />
+      <path d="M3 8l9 6 9-6" />
     </svg>
   ),
   Server: (p) => (

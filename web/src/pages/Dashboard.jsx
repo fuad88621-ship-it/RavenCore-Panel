@@ -96,7 +96,7 @@ function BentoStat({ label, value, suffix, decimals = 0, icon, color, delay = 0 
 const ServerCard = React.memo(function ServerCard({ server }) {
   const status = server.suspended ? 'suspended' : server.status || 'offline';
   const isRunning = status === 'running';
-  const isMc = (server.egg_name || '').toLowerCase().includes('minecraft') || (server.egg_name || '').toLowerCase().includes('vanilla');
+  const isMc = (server.egg_name || '').toLowerCase().includes('minecraft') || (server.egg_name || '').toLowerCase().includes('vanilla') || (server.egg_name || '').toLowerCase().includes('purpur') || (server.egg_name || '').toLowerCase().includes('fabric');
   const [mc, setMc] = useState(null);
 
   useEffect(() => {
@@ -115,46 +115,79 @@ const ServerCard = React.memo(function ServerCard({ server }) {
     return () => { alive = false; clearInterval(t); };
   }, [server.id, isMc]);
 
+  const statusColor = isRunning ? 'emerald' : status === 'suspended' ? 'red' : 'amber';
+  const statusTone = { emerald: 'text-emerald-400', red: 'text-red-400', amber: 'text-amber-400' }[statusColor];
+
   return (
     <Link to={`/servers/${server.id}`}>
-      <SpotlightCard className="group p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="relative flex h-3 w-3 shrink-0">
-              <span className={cn('status-ping absolute inline-flex h-full w-full rounded-full opacity-70', isRunning ? 'bg-emerald-400' : status === 'suspended' ? 'bg-red-400' : 'bg-amber-400')} />
-              <span className={cn('relative inline-flex h-3 w-3 rounded-full', isRunning ? 'bg-emerald-400' : status === 'suspended' ? 'bg-red-400' : 'bg-amber-400')} />
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-white transition group-hover:text-violet-200">{server.name}</p>
-              <p className="text-[11px] text-zinc-500">
-                {server.egg_name || 'Server'}
-                {server.owner_username && <span className="ml-1.5 text-zinc-600">· {server.owner_username}</span>}
-              </p>
+      <SpotlightCard className="group relative overflow-hidden p-0">
+        {/* Top accent line */}
+        <div className={cn('h-1 w-full bg-gradient-to-r from-transparent via-current to-transparent opacity-60', statusTone)} />
+        <div className="p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                {isRunning && <span className={cn('status-ping absolute inline-flex h-full w-full rounded-full opacity-70', statusTone)} />}
+                <span className={cn('relative inline-flex h-2.5 w-2.5 rounded-full', statusTone)} />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-[15px] font-semibold text-white transition group-hover:text-violet-200">{server.name}</p>
+                <p className="text-[11px] text-zinc-500">
+                  {server.egg_name || 'Server'}
+                  {server.owner_username && <span className="ml-1.5 text-zinc-600">· {server.owner_username}</span>}
+                </p>
+              </div>
             </div>
+            <StatusBadge status={status} />
           </div>
-          <StatusBadge status={status} />
-        </div>
-        <div className="mt-5">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-600">Limits</p>
-          <p className="mt-2 text-xs text-zinc-400">
-            {server.cpu}% CPU · {fmtMb(server.memory_mb)} RAM · {fmtMb(server.disk_mb || 0)} disk
-          </p>
+
+          {/* Resource bars */}
+          <div className="mt-5 space-y-3">
+            <MiniResource label="CPU" value={`${server.cpu}%`} pct={Math.min(100, server.cpu)} color={server.cpu >= 90 ? 'red' : server.cpu >= 70 ? 'amber' : 'violet'} />
+            <MiniResource label="RAM" value={fmtMb(server.memory_mb)} pct={Math.min(100, (server.memory_mb / Math.max(server.memory_mb, 1024)) * 100)} color="emerald" />
+            <MiniResource label="Disk" value={fmtMb(server.disk_mb || 0)} pct={Math.min(100, (server.disk_mb || 0) / Math.max(server.disk_mb || 0, 1024) * 100)} color="sky" />
+          </div>
+
           {isMc && (
-            <p className="mt-2 flex items-center gap-1.5 text-xs">
-              <span className="text-zinc-500">👥</span>
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-white/[0.05] bg-white/[0.02] px-3 py-2">
+              <span className="text-sm">👥</span>
               {mc && mc.online ? (
-                <span className="font-semibold text-emerald-400">{mc.players}<span className="text-zinc-500">/{mc.max_players}</span></span>
+                <>
+                  <span className="text-sm font-semibold text-emerald-400">{mc.players}<span className="text-zinc-500">/{mc.max_players}</span></span>
+                  <span className="ml-auto truncate text-[11px] text-zinc-600">{mc.version}</span>
+                </>
               ) : (
-                <span className="text-zinc-600">offline</span>
+                <span className="text-sm text-zinc-600">No players online</span>
               )}
-              {mc && mc.online && mc.version && <span className="ml-1 truncate text-[10px] text-zinc-600">{mc.version}</span>}
-            </p>
+            </div>
           )}
+        </div>
+
+        {/* Hover arrow */}
+        <div className="absolute bottom-4 right-4 translate-x-2 opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-zinc-400">
+            {ArrowIcon}
+          </span>
         </div>
       </SpotlightCard>
     </Link>
   );
 });
+
+function MiniResource({ label, value, pct, color }) {
+  const barColor = { violet: 'from-violet-500 to-fuchsia-500', emerald: 'from-emerald-500 to-teal-500', sky: 'from-sky-500 to-blue-500', amber: 'from-amber-500 to-orange-500', red: 'from-red-500 to-rose-500' }[color];
+  return (
+    <div className="flex items-center gap-3">
+      <span className="w-8 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{label}</span>
+      <div className="flex-1">
+        <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+          <div className={cn('h-full rounded-full bg-gradient-to-r', barColor)} style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+      <span className="w-16 text-right text-[11px] font-medium text-zinc-400">{value}</span>
+    </div>
+  );
+}
 
 function QuickActionCard({ to, title, desc, icon, gradient }) {
   return (
