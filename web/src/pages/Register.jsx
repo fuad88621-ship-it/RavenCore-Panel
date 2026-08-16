@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { api } from '../api.js';
@@ -6,7 +6,13 @@ import { useAuth, useSettings } from '../App.jsx';
 import { Icons } from '../components/ui.jsx';
 export default function Register() {
   const settings = useSettings();
-  const registrationOpen = settings['panel.registration'] !== 'false';
+  const [liveSettings, setLiveSettings] = useState(null);
+  // Fetch fresh settings on every visit (see Login.jsx note).
+  useEffect(() => {
+    api.settings().then((d) => setLiveSettings(d.settings)).catch(() => {});
+  }, []);
+  const effective = liveSettings || settings;
+  const registrationOpen = effective['panel.registration'] !== 'false';
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
