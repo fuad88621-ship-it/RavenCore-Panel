@@ -122,12 +122,12 @@ export default function Settings() {
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Available backups</p>
             {backups.map((b) => (
-              <div key={b.name} className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3">
-                <div>
-                  <p className="text-sm font-medium text-white">{b.name}</p>
+              <div key={b.name} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-white">{b.name}</p>
                   <p className="text-xs text-zinc-500">{formatBytes(b.size_bytes)} · {new Date(b.created_at).toLocaleString()}</p>
                 </div>
-                <a href={api.admin.downloadBackup(b.name)} className="btn-ghost !py-1.5 text-xs" download>Download</a>
+                <a href={api.admin.downloadBackup(b.name)} className="btn-ghost !py-1.5 text-xs shrink-0" download>Download</a>
               </div>
             ))}
           </div>
