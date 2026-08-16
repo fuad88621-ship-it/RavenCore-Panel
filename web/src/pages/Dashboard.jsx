@@ -121,22 +121,16 @@ const ServerCard = React.memo(function ServerCard({ server }) {
   return (
     <Link to={`/servers/${server.id}`}>
       <SpotlightCard className="group relative overflow-hidden p-0">
-        {/* Top accent line */}
+        {/* Top accent line reflects status */}
         <div className={cn('h-1 w-full bg-gradient-to-r from-transparent via-current to-transparent opacity-60', statusTone)} />
         <div className="p-5">
           <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="relative flex h-2.5 w-2.5 shrink-0">
-                {isRunning && <span className={cn('status-ping absolute inline-flex h-full w-full rounded-full opacity-70', statusTone)} />}
-                <span className={cn('relative inline-flex h-2.5 w-2.5 rounded-full', statusTone)} />
-              </span>
-              <div className="min-w-0">
-                <p className="truncate text-[15px] font-semibold text-white transition group-hover:text-violet-200">{server.name}</p>
-                <p className="text-[11px] text-zinc-500">
-                  {server.egg_name || 'Server'}
-                  {server.owner_username && <span className="ml-1.5 text-zinc-600">· {server.owner_username}</span>}
-                </p>
-              </div>
+            <div className="min-w-0">
+              <p className="truncate text-[15px] font-semibold text-white transition group-hover:text-violet-200">{server.name}</p>
+              <p className="text-[11px] text-zinc-500">
+                {server.egg_name || 'Server'}
+                {server.owner_username && <span className="ml-1.5 text-zinc-600">· {server.owner_username}</span>}
+              </p>
             </div>
             <StatusBadge status={status} />
           </div>
