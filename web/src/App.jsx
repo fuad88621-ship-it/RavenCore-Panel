@@ -566,10 +566,10 @@ export default function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </AnimatePresence>
+          <CommandPalette />
         </SettingsContext.Provider>
       </AuthContext.Provider>
       </ConfirmProvider>
-      <CommandPalette />
       <Toasts toasts={toastApi.toasts} onDismiss={toastApi.dismiss} />
       {/* RavenCore attribution — required by the license, do not remove */}
       <div className="pointer-events-none fixed bottom-1.5 left-1/2 z-[90] -translate-x-1/2 text-[10px] text-zinc-600">
