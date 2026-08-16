@@ -141,53 +141,42 @@ const ServerCard = React.memo(function ServerCard({ server }) {
             <StatusBadge status={status} />
           </div>
 
-          {/* Resource bars */}
-          <div className="mt-5 space-y-3">
-            <MiniResource label="CPU" value={`${server.cpu}%`} pct={Math.min(100, server.cpu)} color={server.cpu >= 90 ? 'red' : server.cpu >= 70 ? 'amber' : 'violet'} />
-            <MiniResource label="RAM" value={fmtMb(server.memory_mb)} pct={Math.min(100, (server.memory_mb / Math.max(server.memory_mb, 1024)) * 100)} color="emerald" />
-            <MiniResource label="Disk" value={fmtMb(server.disk_mb || 0)} pct={Math.min(100, (server.disk_mb || 0) / Math.max(server.disk_mb || 0, 1024) * 100)} color="sky" />
+          {/* Resource limits as clean icon chips */}
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-zinc-400">
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.05] bg-white/[0.02] px-2 py-1">
+              <Icons.Cpu className="h-3.5 w-3.5 text-violet-400" />
+              {server.cpu}%
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.05] bg-white/[0.02] px-2 py-1">
+              <Icons.Ram className="h-3.5 w-3.5 text-emerald-400" />
+              {fmtMb(server.memory_mb)}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.05] bg-white/[0.02] px-2 py-1">
+              <Icons.Disk className="h-3.5 w-3.5 text-sky-400" />
+              {fmtMb(server.disk_mb || 0)}
+            </span>
           </div>
 
           {isMc && (
-            <div className="mt-4 flex items-center gap-2 rounded-xl border border-white/[0.05] bg-white/[0.02] px-3 py-2">
-              <span className="text-sm">👥</span>
-              {mc && mc.online ? (
-                <>
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] px-3 py-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-base">👥</span>
+                {mc && mc.online ? (
                   <span className="text-sm font-semibold text-emerald-400">{mc.players}<span className="text-zinc-500">/{mc.max_players}</span></span>
-                  <span className="ml-auto truncate text-[11px] text-zinc-600">{mc.version}</span>
-                </>
-              ) : (
-                <span className="text-sm text-zinc-600">No players online</span>
+                ) : (
+                  <span className="text-sm text-zinc-600">No players online</span>
+                )}
+              </div>
+              {mc && mc.online && mc.version && (
+                <span className="truncate text-[11px] text-zinc-600">{mc.version}</span>
               )}
             </div>
           )}
-        </div>
-
-        {/* Hover arrow */}
-        <div className="absolute bottom-4 right-4 translate-x-2 opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-zinc-400">
-            {ArrowIcon}
-          </span>
         </div>
       </SpotlightCard>
     </Link>
   );
 });
-
-function MiniResource({ label, value, pct, color }) {
-  const barColor = { violet: 'from-violet-500 to-fuchsia-500', emerald: 'from-emerald-500 to-teal-500', sky: 'from-sky-500 to-blue-500', amber: 'from-amber-500 to-orange-500', red: 'from-red-500 to-rose-500' }[color];
-  return (
-    <div className="flex items-center gap-3">
-      <span className="w-8 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{label}</span>
-      <div className="flex-1">
-        <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-          <div className={cn('h-full rounded-full bg-gradient-to-r', barColor)} style={{ width: `${pct}%` }} />
-        </div>
-      </div>
-      <span className="w-16 text-right text-[11px] font-medium text-zinc-400">{value}</span>
-    </div>
-  );
-}
 
 function QuickActionCard({ to, title, desc, icon, gradient }) {
   return (
